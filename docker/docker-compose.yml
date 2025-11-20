@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ../ # Go up to backend root
+      dockerfile: docker/Dockerfile
+      args:
+        NODE_ENV: ${NODE_ENV:-development}
+    container_name: roster_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - ../.env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../:/usr/src/app
+      - /usr/src/app/node_modules
+    # 👇 Runs dev or prod command automatically
+    command: >
+      sh -c "if [ \"$NODE_ENV\" = 'production' ]; then
+               npm run build && node dist/server.js;
+             else
+               npm install --include=dev && npm run dev;
+             fi"
+    networks:
+      - roster_network
+
+  postgres:
+    image: postgres:16
+    container_name: roster_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: rosterdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - roster_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: roster_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - roster_network
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  roster_network:
+    driver: bridge

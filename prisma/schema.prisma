@@ -1,0 +1,46 @@
+// ------------------------------------------------------
+//  Ez Lab Testing - Prisma Schema
+// ------------------------------------------------------
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------
+//  ENUMS
+// ------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  LAB_PARTNER
+  CUSTOMER
+}
+
+// ------------------------------------------------------
+//  MODELS
+// ------------------------------------------------------
+
+// ---------------- USERS ----------------
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  phoneNumber  String?   @db.VarChar(20)
+  profileImage String? // URL to profile image
+  bio          String?   @db.VarChar(500)
+  firstName    String?   @db.VarChar(100)
+  lastName     String?   @db.VarChar(100)
+  dateOfBirth  DateTime?
+
+  role Role @default(LAB_PARTNER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}

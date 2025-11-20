@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    /* Output */
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "declaration": false,
+
+    /* Target Environment */
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+
+    /* Strictness */
+    "strict": true,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Node Compatibility */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    /* Performance */
+    "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+
+    /* Path Aliases */
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["*"]
+    }
+  },
+
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "coverage", "tests", ".prisma"]
+}
