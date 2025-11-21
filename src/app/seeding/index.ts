@@ -1,13 +1,13 @@
 import * as bcrypt from 'bcrypt';
 import config from '../../config';
 import { prisma } from '../../config/db';
-import { createLogger } from 'winston';
 
 const seedSuperAdmin = async (): Promise<void> => {
   try {
     const {
       super_admin_email,
       super_admin_password,
+      super_admin_is_verified,
       super_admin_first_name,
       super_admin_last_name,
       super_admin_phone,
@@ -29,6 +29,8 @@ const seedSuperAdmin = async (): Promise<void> => {
           email: super_admin_email,
           password: hashedPassword,
           phoneNumber: super_admin_phone,
+          isVerified: super_admin_is_verified,
+          role: 'SUPER_ADMIN',
         },
       });
 

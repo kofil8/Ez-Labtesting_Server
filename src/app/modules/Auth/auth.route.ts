@@ -6,6 +6,15 @@ import auth from '@/app/middlewares/auth';
 
 const router = express.Router();
 
+//Register
+router.post('/register', validateRequest(authValidation.register), AuthControllers.registerUser);
+
+// 👉 Resend OTP (No Auth Required)
+router.post('/resend-otp', validateRequest(authValidation.resendOTP), AuthControllers.resendOTP);
+
+// 👉 Verify OTP (No Auth Required)
+router.post('/verify-otp', validateRequest(authValidation.verifyOTP), AuthControllers.verifyOTP);
+
 // 👉 Login (No Auth Required)
 router.post('/login', validateRequest(authValidation.loginUser), AuthControllers.loginUser);
 

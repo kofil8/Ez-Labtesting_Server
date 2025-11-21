@@ -15,6 +15,7 @@ export default {
   super_admin_email: process.env.SUPER_ADMIN_EMAIL as string,
   super_admin_password: process.env.SUPER_ADMIN_PASSWORD as string,
   super_admin_phone: process.env.SUPER_ADMIN_PHONE as string,
+  super_admin_is_verified: process.env.IS_VERIFIED === 'true',
   port: process.env.PORT || 9001,
   salt: process.env.SALT || 12,
 

@@ -1,25 +1,24 @@
-// import { env } from "process";
-import nodemailer from "nodemailer";
-import smtpTransporter from "nodemailer-smtp-transport";
+import nodemailer from 'nodemailer';
+import smtpTransporter from 'nodemailer-smtp-transport';
 
 let sentEmailUtility = async (
   emailTo: string,
   EmailSubject: string,
   EmailText: string,
-  EmailHTML: string
+  EmailHTML: string,
 ) => {
   let transporter = nodemailer.createTransport(
     smtpTransporter({
-      service: "Gmail",
+      service: 'Gmail',
       auth: {
-        user: process.env.EMAIL,
-        pass: process.env.EMAIL_PASSWORD,
+        user: process.env.SMTP_EMAIL,
+        pass: process.env.SMTP_EMAIL_PASSWORD,
       },
-    })
+    }),
   );
 
   let mailOption = {
-    from: "Demo Service <no-reply@gmail.com>",
+    from: 'Demo Service <no-reply@gmail.com>',
     to: emailTo,
     subject: EmailSubject,
     text: EmailText,

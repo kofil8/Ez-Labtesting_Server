@@ -1,5 +1,4 @@
-export const imageurl = "https://ibb.co.com/J23YWnF";
-export const emailTemplate = (otp: number, text: string) => `
+export const emailTemplate = (otp: string, text: string) => `
 <html>
 <head>
     <style>
@@ -71,7 +70,7 @@ export const emailTemplate = (otp: number, text: string) => `
                 <table cellpadding="0" cellspacing="0" class="container">
                     <tr>
                         <td align="center" class="logo" style="padding:30px 20px;">
-                            <img src=${imageurl} alt="Logo" style="display:block; border:0;"/>
+                            <img src=${process.env.OTP_IMAGE_URL} alt="Logo" style="display:block; border:0;"/>
                         </td>
                     </tr>
                     <tr>

@@ -6,7 +6,7 @@ import httpStatus from 'http-status';
 import morgan from 'morgan';
 import path from 'path';
 import GlobalErrorHandler from './app/middlewares/globalErrorHandler';
-import { defaultLimiter } from './app/middlewares/rateLimit';
+import { defaultLimiter, loginLimiter } from './app/middlewares/rateLimit';
 import router from './app/routes';
 import logger from './app/utils/logger';
 
@@ -66,7 +66,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // 🚀 API Routes
-app.use('/api/v1', router);
+app.use('/api/v1', loginLimiter, router);
 
 // ❌ 404 Not Found handler
 app.use((req, res) => {

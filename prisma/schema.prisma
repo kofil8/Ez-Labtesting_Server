@@ -30,14 +30,15 @@ model User {
   id           String    @id @default(uuid())
   email        String    @unique
   password     String
-  phoneNumber  String?   @db.VarChar(20)
+  phoneNumber  String    @db.VarChar(20)
   profileImage String? // URL to profile image
   bio          String?   @db.VarChar(500)
   firstName    String?   @db.VarChar(100)
   lastName     String?   @db.VarChar(100)
   dateOfBirth  DateTime?
+  isVerified   Boolean   @default(false)
 
-  role Role @default(LAB_PARTNER)
+  role Role @default(CUSTOMER)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
