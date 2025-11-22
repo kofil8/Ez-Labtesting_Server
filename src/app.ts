@@ -68,7 +68,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // 🚀 API Routes
-app.use('/api/v1', loginLimiter, router);
+app.use('/api/v1', router);
 
 // ❌ 404 Not Found handler
 app.use((req, res) => {

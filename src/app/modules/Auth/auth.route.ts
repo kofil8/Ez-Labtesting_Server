@@ -24,4 +24,10 @@ router.post('/refresh-token', AuthControllers.refreshToken);
 // 👉 Logout (Auth Required)
 router.post('/logout', auth(), AuthControllers.logoutUser);
 
+// 👉 Forgot Password (No Auth Required)
+router.post('/forgot-password', validateRequest(authValidation.forgotPassword), AuthControllers.forgotPassword);
+
+// 👉 Reset Password (No Auth Required)
+router.post('/reset-password', validateRequest(authValidation.resetPassword), AuthControllers.resetPassword);
+
 export const AuthRouters = router;

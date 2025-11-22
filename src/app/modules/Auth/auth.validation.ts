@@ -76,10 +76,26 @@ const logoutUser = z.object({
   body: z.object({}),
 });
 
+const forgotPassword = z.object({
+  body: z.object({
+    email: z.string().email({ message: 'Invalid email address' }),
+  }),
+});
+
+const resetPassword = z.object({
+  body: z.object({
+    email: z.string().email({ message: 'Invalid email address' }),
+    otp: z.string().min(6, 'OTP must be 6 digits'),
+    newPassword: z.string().min(6, 'Password must be at least 6 characters long'),
+  }),
+});
+
 export const authValidation = {
   register,
   resendOTP,
   verifyOTP,
   loginUser,
   logoutUser,
+  forgotPassword,
+  resetPassword,
 };

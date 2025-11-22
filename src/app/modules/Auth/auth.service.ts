@@ -272,6 +272,69 @@ const logoutUser = async (userId: string, accessToken: string) => {
   await redisClient.set(`blacklist:${accessToken}`, '1', 'EX', 60 * 60);
 };
 
+// Forgot Password
+const forgotPassword = async (email: string) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+
+  // Anti-spam (reuse logic if possible, or simple check)
+  const cooldownKey = `otp_forgot_cooldown:${email}`;
+  if (await redisClient.get(cooldownKey)) {
+    throw new ApiError(429, 'Please wait 60 seconds before requesting another OTP.');
+  }
+
+  await redisClient.set(cooldownKey, '1', 'EX', 60);
+
+  // Generate OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Hash OTP
+  const hashedOtp = await bcrypt.hash(otp, 10);
+
+  // Save in Redis (different key from registration to avoid conflict, or same if flow allows)
+  // Using specific key for password reset to be safe
+  await redisClient.set(`otp_reset:${email}`, hashedOtp, 'EX', 5 * 60);
+
+  // Send email
+  await sentEmailUtility(
+    email,
+    'Reset your password',
+    `Your password reset code is: ${otp}`,
+    emailTemplate(otp, 'Reset your password'),
+  );
+
+  return { message: 'OTP sent to your email' };
+};
+
+// Reset Password
+const resetPassword = async (payload: { email: string; otp: string; newPassword: string }) => {
+  const { email, otp, newPassword } = payload;
+
+  const hashedOtp = await redisClient.get(`otp_reset:${email}`);
+
+  if (!hashedOtp) {
+    throw new ApiError(400, 'OTP expired or invalid');
+  }
+
+  const isValid = await bcrypt.compare(otp, hashedOtp);
+
+  if (!isValid) {
+    throw new ApiError(400, 'Invalid OTP');
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, Number(config.salt));
+
+  await prisma.user.update({
+    where: { email },
+    data: { password: hashedPassword },
+  });
+
+  await redisClient.del(`otp_reset:${email}`);
+
+  return { message: 'Password reset successfully' };
+};
+
 export const AuthServices = {
   registerUserToDB,
   resendOTP,
@@ -279,4 +342,6 @@ export const AuthServices = {
   loginUserFromDB,
   refreshAccessToken,
   logoutUser,
+  forgotPassword,
+  resetPassword,
 };

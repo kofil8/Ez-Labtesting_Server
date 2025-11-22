@@ -130,6 +130,26 @@ const logoutUser = catchAsync(async (req, res) => {
   });
 });
 
+const forgotPassword = catchAsync(async (req, res) => {
+  const result = await AuthServices.forgotPassword(req.body.email);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'OTP sent successfully',
+    data: result,
+  });
+});
+
+const resetPassword = catchAsync(async (req, res) => {
+  const result = await AuthServices.resetPassword(req.body);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Password reset successfully',
+    data: result,
+  });
+});
+
 export const AuthControllers = {
   registerUser,
   resendOTP,
@@ -137,4 +157,6 @@ export const AuthControllers = {
   loginUser,
   refreshToken,
   logoutUser,
+  forgotPassword,
+  resetPassword,
 };
