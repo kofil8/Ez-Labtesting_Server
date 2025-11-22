@@ -19,11 +19,7 @@ router.post('/verify-otp', validateRequest(authValidation.verifyOTP), AuthContro
 router.post('/login', validateRequest(authValidation.loginUser), AuthControllers.loginUser);
 
 // 👉 Refresh Token (No Auth Required)
-router.post(
-  '/refresh-token',
-  validateRequest(authValidation.refreshToken),
-  AuthControllers.refreshToken,
-);
+router.post('/refresh-token', AuthControllers.refreshToken);
 
 // 👉 Logout (Auth Required)
 router.post('/logout', auth(), AuthControllers.logoutUser);

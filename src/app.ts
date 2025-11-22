@@ -9,6 +9,7 @@ import GlobalErrorHandler from './app/middlewares/globalErrorHandler';
 import { defaultLimiter, loginLimiter } from './app/middlewares/rateLimit';
 import router from './app/routes';
 import logger from './app/utils/logger';
+import cookieParser from 'cookie-parser';
 
 const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
@@ -35,6 +36,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(morganFormat));
 app.use(compression());
+app.use(cookieParser());
 
 // 📂 Static files
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

@@ -43,126 +43,93 @@ const registerUserToDB = async (payload: RegisterPayload) => {
       phoneNumber: payload.phoneNumber,
       isVerified: false,
     },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phoneNumber: true,
-      role: true,
-      isVerified: true,
-      createdAt: true,
-      updatedAt: true,
-    },
   });
 
-  /* -----------------------------------------
-       🔥 Generate OTP and store in Redis
-  ----------------------------------------- */
-
+  // Generate OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // Store OTP in Redis for 5 minutes
-  const hashedOtp = await bcrypt.hash(otp.toString(), 10);
+  // Hash OTP
+  const hashedOtp = await bcrypt.hash(otp, 10);
 
+  // Save in Redis
   await redisClient.set(`otp:${newUser.email}`, hashedOtp, 'EX', 5 * 60);
 
-  /* -----------------------------------------
-       🔥 Send OTP email
-  ----------------------------------------- */
-
-  const subject = 'Verify your email address';
-  const text = `Your verification code is: ${otp}`;
-  const html = emailTemplate(otp, 'Welcome to Ez Lab Testing! Verify your email within 5 minutes.');
-
-  await sentEmailUtility(newUser.email, subject, text, html);
+  // Send email
+  await sentEmailUtility(
+    newUser.email,
+    'Verify your email',
+    `Your OTP is: ${otp}`,
+    emailTemplate(otp, 'Verify your account'),
+  );
 
   return newUser;
 };
 
 // Resend OTP
 const resendOTP = async (email: string) => {
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
+  const user = await prisma.user.findUnique({ where: { email } });
 
-  if (!user) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'User not found');
-  }
+  if (!user) throw new ApiError(400, 'User not found');
+  if (user.isVerified) throw new ApiError(400, 'User already verified');
 
-  if (user.isVerified) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'User already verified');
-  }
-
-  /* --------------------------------------------------
-     🚫 Anti-spam Protection
-  ---------------------------------------------------*/
-
+  // Anti-spam
   const cooldownKey = `otp_resend_cooldown:${email}`;
   const hourlyKey = `otp_hourly_limit:${email}`;
 
-  // Per-minute cooldown
-  const cooldown = await redisClient.get(cooldownKey);
-  if (cooldown) {
+  if (await redisClient.get(cooldownKey)) {
     throw new ApiError(429, 'Please wait 60 seconds before requesting another OTP.');
   }
 
-  // Hourly limit (max 5 OTP sends per hour)
   const hourlyCount = await redisClient.incr(hourlyKey);
   if (hourlyCount === 1) {
-    await redisClient.expire(hourlyKey, 60 * 60); // 1 hour
+    await redisClient.expire(hourlyKey, 60 * 60);
   }
   if (hourlyCount > 5) {
     throw new ApiError(429, 'Too many OTP requests. Try again later.');
   }
 
-  // Set 1-minute cooldown
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  /* --------------------------------------------------
-     🔥 Generate new OTP and store it
-  ---------------------------------------------------*/
-
+  // Generate new OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  await redisClient.set(`otp:${email}`, otp, 'EX', 5 * 60);
+  // Hash OTP before saving
+  const hashedOtp = await bcrypt.hash(otp, 10);
 
-  /* --------------------------------------------------
-     📧 Send OTP Email
-  ---------------------------------------------------*/
+  await redisClient.set(`otp:${email}`, hashedOtp, 'EX', 5 * 60);
 
-  const subject = 'Your new verification code';
-  const text = `Your new verification code is: ${otp}`;
-  const html = emailTemplate(Number(otp), 'Here is your new OTP. It is valid for 5 minutes.');
-
-  await sentEmailUtility(email, subject, text, html);
+  // Send email
+  await sentEmailUtility(
+    email,
+    'Your new OTP',
+    `Your new verification code is: ${otp}`,
+    emailTemplate(otp, 'Here is your new OTP'),
+  );
 
   return { message: 'OTP resent successfully' };
 };
 
 // Verify Registration OTP
 const verifyRegistrationOTP = async (email: string, otp: string) => {
-  const savedOtp = await bcrypt.compare(otp, await redisClient.get(`otp:${email}`));
+  const hashedOtp = await redisClient.get(`otp:${email}`);
 
-  if (!savedOtp) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'OTP expired or invalid');
+  if (!hashedOtp) {
+    throw new ApiError(400, 'OTP expired or invalid');
   }
 
-  if (savedOtp !== otp) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid OTP');
+  const isValid = await bcrypt.compare(otp, hashedOtp);
+
+  if (!isValid) {
+    throw new ApiError(400, 'Invalid OTP');
   }
 
-  if (savedOtp !== otp.toString()) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid OTP');
-  }
-
-  // Mark user as verified
+  // Mark user verified
   await prisma.user.update({
     where: { email },
     data: { isVerified: true },
   });
 
-  // Remove OTP from Redis (one-time use)
+  // Remove OTP after success
   await redisClient.del(`otp:${email}`);
 
   return { message: 'Email verified successfully' };
@@ -307,6 +274,7 @@ const logoutUser = async (userId: string, accessToken: string) => {
 
 export const AuthServices = {
   registerUserToDB,
+  resendOTP,
   verifyRegistrationOTP,
   loginUserFromDB,
   refreshAccessToken,

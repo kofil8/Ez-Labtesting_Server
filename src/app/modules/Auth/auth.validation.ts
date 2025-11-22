@@ -72,14 +72,6 @@ const loginUser = z.object({
   }),
 });
 
-const refreshToken = z.object({
-  body: z.object({
-    refreshToken: z.string({
-      required_error: 'Refresh token is required!',
-    }),
-  }),
-});
-
 const logoutUser = z.object({
   body: z.object({}),
 });
@@ -89,6 +81,5 @@ export const authValidation = {
   resendOTP,
   verifyOTP,
   loginUser,
-  refreshToken,
   logoutUser,
 };
