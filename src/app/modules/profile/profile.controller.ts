@@ -3,6 +3,7 @@ import catchAsync from '@/app/helpers/catchAsync';
 import sendResponse from '@/app/helpers/sendResponse';
 import httpStatus from 'http-status';
 import { ProfileService } from './profile.service';
+import { File as MulterFile } from 'multer';
 
 const getProfile = catchAsync(async (req: Request & { user?: any }, res: Response) => {
   const result = await ProfileService.getProfileFromDB(req.user);
@@ -14,21 +15,16 @@ const getProfile = catchAsync(async (req: Request & { user?: any }, res: Respons
   });
 });
 
-const updateProfile = catchAsync(async (req: Request & { user?: any }, res: Response) => {
-  // Handle multipart/form-data: body is parsed by multer, but we might need to parse JSON fields if they are sent as strings
-  if (req.body.data) {
-      try {
-          req.body = JSON.parse(req.body.data);
-      } catch (error) {
-          // ignore if not json string
-      }
-  }
-  
-  const result = await ProfileService.updateProfileInDB(req.user.id, req);
+const updateMyProfile = catchAsync(async (req: Request & { file?: MulterFile }, res: Response) => {
+  const id = req.user?.id as string;
+  const payload = req.body.bodyData;
+  const file = req.file as MulterFile | undefined;
+  const result = await ProfileService.updateMyProfileIntoDB(id, payload, file);
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'Profile updated successfully',
+    message: 'User profile updated successfully',
     data: result,
   });
 });
@@ -45,6 +41,6 @@ const changePassword = catchAsync(async (req: Request & { user?: any }, res: Res
 
 export const ProfileController = {
   getProfile,
-  updateProfile,
+  updateMyProfile,
   changePassword,
 };

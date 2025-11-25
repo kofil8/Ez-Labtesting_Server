@@ -5,6 +5,7 @@
     "rootDir": "src",
     "sourceMap": true,
     "declaration": false,
+    "typeRoots": ["./src/types", "./node_modules/@types"],
 
     /* Target Environment */
     "target": "ES2022",

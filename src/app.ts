@@ -16,7 +16,7 @@ const morganFormat = ':method :url :status :response-time ms';
 
 // 🧩 Global middlewares
 const corsOptions = {
-  origin: ['http://localhost:3000'],
+  origin: ['*'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,

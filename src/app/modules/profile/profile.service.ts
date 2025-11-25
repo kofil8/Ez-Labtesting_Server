@@ -32,39 +32,27 @@ const getProfileFromDB = async (user: any) => {
   return profile;
 };
 
-const updateProfileInDB = async (userId: string, req: any) => {
-  const file = req.file;
-  const payload = req.body;
+const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
+  const existingUser = await prisma.user.findUnique({ where: { id } });
+  if (!existingUser) throw new ApiError(httpStatus.BAD_REQUEST, 'User not found');
 
-  if (file) {
-    payload.profileImage = `/uploads/${file.filename}`;
-  }
+  const profileImage =
+    file && file.originalname
+      ? `${config.backend_file_url}/uploads/${file.originalname}`
+      : existingUser.profileImage;
 
-  // If dateOfBirth is provided, ensure it's a Date object
-  if (payload.dateOfBirth) {
-    payload.dateOfBirth = new Date(payload.dateOfBirth);
-  }
+  const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
   const updatedUser = await prisma.user.update({
-    where: { id: userId },
-    data: payload,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phoneNumber: true,
-      profileImage: true,
-      bio: true,
-      dateOfBirth: true,
-      role: true,
-      isVerified: true,
-      createdAt: true,
-      updatedAt: true,
+    where: { id },
+    data: {
+      profileImage,
+      ...parsedPayload,
     },
   });
 
-  return updatedUser;
+  const { password, ...rest } = updatedUser;
+  return Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== null));
 };
 
 const changePasswordInDB = async (user: any, payload: any) => {
@@ -76,9 +64,19 @@ const changePasswordInDB = async (user: any, payload: any) => {
     throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
   }
 
+  // Check old password is correct
   const isCorrectPassword = await bcrypt.compare(payload.oldPassword, userData.password);
   if (!isCorrectPassword) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Incorrect old password');
+  }
+
+  // Prevent using old password
+  const isSameAsOld = await bcrypt.compare(payload.newPassword, userData.password);
+  if (isSameAsOld) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      'New password cannot be the same as the old password',
+    );
   }
 
   const hashedPassword = await bcrypt.hash(payload.newPassword, Number(config.salt));
@@ -97,6 +95,6 @@ const changePasswordInDB = async (user: any, payload: any) => {
 
 export const ProfileService = {
   getProfileFromDB,
-  updateProfileInDB,
+  updateMyProfileIntoDB,
   changePasswordInDB,
 };

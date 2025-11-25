@@ -59,7 +59,7 @@ const registerUserToDB = async (payload: RegisterPayload) => {
     newUser.email,
     'Verify your email',
     `Your OTP is: ${otp}`,
-    emailTemplate(otp, 'Verify your account'),
+    emailTemplate(otp, 'Otp is valid for 5 minutes'),
   );
 
   return newUser;

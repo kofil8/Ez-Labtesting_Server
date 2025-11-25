@@ -1,10 +1,11 @@
-import { Server } from 'http';
+import http from 'http';
 import app from './app';
 import config from './config';
 import { connectDatabases, disconnectDatabases } from './config/db';
 import seedSuperAdmin from './app/seeding';
+import { initSocket } from './notifications/socket';
 
-let server: Server | null = null;
+let server: http.Server | null = null;
 const PORT = Number(config.port) || 9001;
 
 async function startServer() {
@@ -14,21 +15,30 @@ async function startServer() {
     await connectDatabases();
     await seedSuperAdmin();
 
-    server = app.listen(PORT, () => {
+    // create http server and attach express app
+    server = http.createServer(app);
+
+    // initialize socket.io (async)
+    try {
+      await initSocket(server);
+      console.log('✅ Socket.IO initialized');
+    } catch (err) {
+      console.warn('⚠️ Socket.IO initialization failed', err);
+    }
+
+    server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}/health`);
     });
   } catch (err) {
-    console.error('❌ Server start failed:', err);
+    console.error('Failed to start server', err);
     process.exit(1);
   }
 }
 
-// Graceful Shutdown
 async function gracefulShutdown(signal: string) {
-  console.log(`\n🛑 Received ${signal}. Closing services...`);
-
+  console.log(`\n🛑 Received ${signal} — stopping server...`);
   if (server) {
-    await new Promise((resolve) => server!.close(resolve));
+    await new Promise<void>((resolve) => server!.close(() => resolve()));
     console.log('🛑 HTTP server stopped');
   }
 
