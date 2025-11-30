@@ -31,7 +31,7 @@ model User {
   email        String    @unique
   password     String
   phoneNumber  String    @db.VarChar(20)
-  profileImage String? // URL to profile image
+  profileImage String?
   bio          String?   @db.VarChar(500)
   firstName    String?   @db.VarChar(100)
   lastName     String?   @db.VarChar(100)
@@ -43,20 +43,21 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  PushSubscriptions PushSubscription[]
+  // relation
+  pushTokens PushToken[]
 
   @@index([email])
 }
 
 // ---------------- PUSH SUBSCRIPTIONS ----------------
-model PushSubscription {
-  id       String @id @default(cuid())
-  endpoint String @unique
-  p256dh   String
-  auth     String
-
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
-
+model PushToken {
+  id        Int      @id @default(autoincrement())
+  userId    String? // ✅ FIXED — must match User.id type
+  token     String   @unique
+  platform  String?
+  revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

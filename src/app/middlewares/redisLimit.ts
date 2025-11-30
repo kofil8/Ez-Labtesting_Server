@@ -8,7 +8,8 @@ import RedisStore from 'rate-limit-redis';
 const redisRateLimitStore = () =>
   new RedisStore({
     // Fix for TypeScript: use redisClient.call(...) instead of sendCommand
-    sendCommand: (...args: string[]) => redisClient.call(...args) as unknown as Promise<string>,
+    sendCommand: (...args: string[]) =>
+      (redisClient.call as (...args: any[]) => Promise<any>)(...args) as unknown as Promise<string>,
   });
 
 /**

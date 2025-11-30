@@ -9,6 +9,7 @@ import redisClient from '@/config/redis';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import { Secret, SignOptions } from 'jsonwebtoken';
+import { NotificationService } from '../notifications/notifications.service';
 
 type RegisterPayload = {
   firstName: string;
@@ -57,7 +58,7 @@ const registerUserToDB = async (payload: RegisterPayload) => {
   // Send email
   await sentEmailUtility(
     newUser.email,
-    'Verify your email',
+    'Please Verify your email',
     `Your OTP is: ${otp}`,
     emailTemplate(otp, 'Otp is valid for 5 minutes'),
   );
@@ -139,8 +140,16 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
    LOGIN USER  + BRUTE-FORCE PROTECTION + TOKEN CREATION
 ------------------------------------------------------- */
 
-const loginUserFromDB = async (payload: { email: string; password: string }, ip: string) => {
-  const email = payload.email;
+const loginUserFromDB = async (
+  payload: {
+    email: string;
+    password: string;
+    pushToken?: string;
+    platform?: string;
+  },
+  ip: string,
+) => {
+  const { email, pushToken, platform = 'web' } = payload;
 
   // 1️⃣ Check if account is locked
   const isLocked = await LoginAttemptService.isAccountLocked(email);
@@ -168,46 +177,51 @@ const loginUserFromDB = async (payload: { email: string; password: string }, ip:
     },
   });
 
-  // 3️⃣ Invalid email (failed attempt)
+  // 3️⃣ Invalid email → failed attempt
   if (!user) {
     await LoginAttemptService.recordFailedAttempt(email, ip);
     throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email or password');
   }
 
-  // isVerified check
+  // 4️⃣ Check email verification
   if (!user.isVerified) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Please verify your email before logging in.');
   }
 
-  // 4️⃣ Compare password
+  // 5️⃣ Compare password
   const isCorrectPassword = await bcrypt.compare(payload.password, user.password);
   if (!isCorrectPassword) {
     await LoginAttemptService.recordFailedAttempt(email, ip);
     throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email or password');
   }
 
-  // 5️⃣ Successful login → reset attempts
+  // 6️⃣ Successful login → reset attempts
   await LoginAttemptService.resetAttempts(email, ip);
 
   // Remove password
   const { password, ...userWithoutPassword } = user;
 
-  // 6️⃣ Generate access token
+  // 7️⃣ Generate access token
   const accessToken = jwtHelpers.signToken(
     { id: user.id, email: user.email, role: user.role },
     config.jwt.jwt_secret as Secret,
     config.jwt.expires_in as SignOptions['expiresIn'],
   );
 
-  // 7️⃣ Generate refresh token
+  // 8️⃣ Generate refresh token
   const refreshToken = jwtHelpers.signToken(
     { id: user.id },
     config.jwt.refresh_token_secret as Secret,
     config.jwt.refresh_token_expires_in as SignOptions['expiresIn'],
   );
 
-  // 8️⃣ Save refresh token in Redis (rotation)
+  // 9️⃣ Save refresh token in Redis
   await redisClient.set(`refresh:${user.id}`, refreshToken, 'EX', 7 * 24 * 60 * 60);
+
+  // 🔥 10️⃣ Auto-register FCM push token (if provided)
+  if (pushToken) {
+    await NotificationService.registerToken(user.id, pushToken, platform);
+  }
 
   return {
     accessToken,
@@ -264,12 +278,17 @@ const refreshAccessToken = async (token: string) => {
    LOGOUT USER (remove refresh token + blacklist access token)
 ------------------------------------------------------- */
 
-const logoutUser = async (userId: string, accessToken: string) => {
-  // Remove refresh token
+const logoutUser = async (userId: string, accessToken: string, pushToken?: string) => {
+  // 1️⃣ Remove refresh token
   await redisClient.del(`refresh:${userId}`);
 
-  // Blacklist access token for 1 hour
+  // 2️⃣ Blacklist access token for 1 hour
   await redisClient.set(`blacklist:${accessToken}`, '1', 'EX', 60 * 60);
+
+  // 🔥 3️⃣ Auto-remove push token
+  if (pushToken) {
+    await NotificationService.unregisterToken(pushToken);
+  }
 };
 
 // Forgot Password

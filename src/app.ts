@@ -16,10 +16,10 @@ const morganFormat = ':method :url :status :response-time ms';
 
 // 🧩 Global middlewares
 const corsOptions = {
-  origin: ['*'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: ['http://localhost:3000'],
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 };
 
 app.use(

@@ -407,7 +407,7 @@ export const emailTemplate = (otp: string, text: string) => `
 
         <!-- Main Content -->
         <div class="content">
-            <h2 class="greeting">Welcome Back!</h2>
+            <h2 class="greeting">Welcome to Ez Lab Testing!</h2>
             <p class="description">${text}</p>
 
             <!-- OTP Section -->

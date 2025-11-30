@@ -3,7 +3,6 @@ import app from './app';
 import config from './config';
 import { connectDatabases, disconnectDatabases } from './config/db';
 import seedSuperAdmin from './app/seeding';
-import { initSocket } from './notifications/socket';
 
 let server: http.Server | null = null;
 const PORT = Number(config.port) || 9001;
@@ -17,14 +16,6 @@ async function startServer() {
 
     // create http server and attach express app
     server = http.createServer(app);
-
-    // initialize socket.io (async)
-    try {
-      await initSocket(server);
-      console.log('✅ Socket.IO initialized');
-    } catch (err) {
-      console.warn('⚠️ Socket.IO initialization failed', err);
-    }
 
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}/health`);

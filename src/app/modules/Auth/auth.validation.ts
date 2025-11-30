@@ -69,6 +69,8 @@ const loginUser = z.object({
     password: z.string({
       required_error: 'Password is required!',
     }),
+    pushToken: z.string().optional(),
+    platform: z.string().optional().default('web'),
   }),
 });
 

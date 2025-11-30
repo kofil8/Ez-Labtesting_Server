@@ -1,10 +1,10 @@
-import nodemailer from "nodemailer";
-import config from "../config";
-import ApiError from "../errors/ApiErrors";
+import nodemailer from 'nodemailer';
+import ApiError from '../errors/ApiErrors';
+import config from '@/config';
 
 const emailSender = async (subject: string, email: string, html: string) => {
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    service: 'gmail',
     auth: {
       user: config.emailSender.email,
       pass: config.emailSender.app_pass,
@@ -25,8 +25,8 @@ const emailSender = async (subject: string, email: string, html: string) => {
     const info = await emailTransport.sendMail(mailOptions);
     // console.log("Email sent: " + info.response);
   } catch (error) {
-    console.error("Error sending email:", error);
-    throw new ApiError(500, "Error sending email");
+    console.error('Error sending email:', error);
+    throw new ApiError(500, 'Error sending email');
   }
 };
 

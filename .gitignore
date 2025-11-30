@@ -78,3 +78,7 @@ Thumbs.db
 *.swp
 *.swo
 *.bak
+
+"service-account.json" 
+"kofil.pem" 
+"sa.b64" 

@@ -17,7 +17,9 @@ const registerUser = catchAsync(async (req, res) => {
   });
 });
 
-// Resend OTP
+// ---------------------------
+// RESEND OTP
+// ---------------------------
 const resendOTP = catchAsync(async (req, res) => {
   const { email } = req.body;
 
@@ -30,7 +32,9 @@ const resendOTP = catchAsync(async (req, res) => {
   });
 });
 
-// Verify Email with OTP
+// ---------------------------
+// VERIFY REGISTRATION OTP
+// ---------------------------
 const verifyOTP = catchAsync(async (req, res) => {
   const { email, otp } = req.body;
 
@@ -44,35 +48,45 @@ const verifyOTP = catchAsync(async (req, res) => {
 });
 
 // ---------------------------
-// LOGIN USER (Set refresh token cookie)
+// LOGIN USER (Auto-register push token)
 // ---------------------------
 const loginUser = catchAsync(async (req, res) => {
   const forwarded = req.headers['x-forwarded-for'];
-  const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip;
+  const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : (req.ip as string);
 
-  const { accessToken, refreshToken, user } = await AuthServices.loginUserFromDB(req.body, ip);
+  // 👇 Extract pushToken & platform from body
+  const { pushToken, platform } = req.body;
 
-  // Store refresh token in secure HttpOnly cookie
+  const { accessToken, refreshToken, user } = await AuthServices.loginUserFromDB(
+    {
+      ...req.body,
+      pushToken,
+      platform,
+    },
+    ip,
+  );
+
+  // Store refresh token in secure cookie
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
     path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
     message: 'Logged in successfully',
     data: {
-      accessToken, // returned normally
+      accessToken,
       user,
     },
   });
 });
 
 // ---------------------------
-// REFRESH ACCESS TOKEN (Read cookie)
+// REFRESH ACCESS TOKEN
 // ---------------------------
 const refreshToken = catchAsync(async (req, res) => {
   const token = req.cookies.refreshToken;
@@ -83,13 +97,12 @@ const refreshToken = catchAsync(async (req, res) => {
 
   const result = await AuthServices.refreshAccessToken(token);
 
-  // Issue a new refresh token cookie
   res.cookie('refreshToken', result.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
     path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
   sendResponse(res, {
@@ -102,7 +115,7 @@ const refreshToken = catchAsync(async (req, res) => {
 });
 
 // ---------------------------
-// LOGOUT USER (Clear cookie)
+// LOGOUT USER (Auto-remove push token)
 // ---------------------------
 const logoutUser = catchAsync(async (req, res) => {
   const accessToken = req.token;
@@ -112,10 +125,13 @@ const logoutUser = catchAsync(async (req, res) => {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized request');
   }
 
-  // Remove refresh token from Redis & blacklist access token
-  await AuthServices.logoutUser(userId, accessToken);
+  // Get the pushToken from frontend request (optional)
+  const pushToken = req.body?.pushToken || null;
 
-  // Clear the refresh token cookie
+  // Calls service and passes pushToken
+  await AuthServices.logoutUser(userId, accessToken, pushToken);
+
+  // Clear refresh token cookie
   res.clearCookie('refreshToken', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -130,8 +146,12 @@ const logoutUser = catchAsync(async (req, res) => {
   });
 });
 
+// ---------------------------
+// FORGOT PASSWORD
+// ---------------------------
 const forgotPassword = catchAsync(async (req, res) => {
   const result = await AuthServices.forgotPassword(req.body.email);
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -140,8 +160,12 @@ const forgotPassword = catchAsync(async (req, res) => {
   });
 });
 
+// ---------------------------
+// RESET PASSWORD
+// ---------------------------
 const resetPassword = catchAsync(async (req, res) => {
   const result = await AuthServices.resetPassword(req.body);
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
