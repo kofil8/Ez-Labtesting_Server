@@ -1,4 +1,4 @@
-import redisClient from '@/config/redis';
+import redisClient from '../../config/redis';
 
 const LOGIN_ATTEMPT_PREFIX = 'login_attempts';
 const ACCOUNT_LOCK_PREFIX = 'account_lock';

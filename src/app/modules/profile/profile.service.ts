@@ -1,8 +1,8 @@
-import { prisma } from '@/config/db';
-import ApiError from '@/app/errors/ApiErrors';
+import { prisma } from '../../../config/db';
+import ApiError from '../../errors/ApiErrors';
 import httpStatus from 'http-status';
 import bcrypt from 'bcrypt';
-import config from '@/config';
+import config from '../../../config';
 
 const getProfileFromDB = async (user: any) => {
   const profile = await prisma.user.findUnique({

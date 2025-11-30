@@ -1,6 +1,6 @@
-import ApiError from '@/app/errors/ApiErrors';
-import catchAsync from '@/app/helpers/catchAsync';
-import sendResponse from '@/app/helpers/sendResponse';
+import ApiError from '../../errors/ApiErrors';
+import catchAsync from '../../helpers/catchAsync';
+import sendResponse from '../../helpers/sendResponse';
 import httpStatus from 'http-status';
 import { AuthServices } from './auth.service';
 

@@ -7,9 +7,9 @@ import {
   validateSendToToken,
   validateSendToUser,
 } from './notifications.validation';
-import catchAsync from '@/app/helpers/catchAsync';
+import catchAsync from '../../helpers/catchAsync';
 import { NotificationService } from './notifications.service';
-import sendResponse from '@/app/helpers/sendResponse';
+import sendResponse from '../../helpers/sendResponse';
 
 const router = express.Router();
 

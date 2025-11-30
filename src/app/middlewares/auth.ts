@@ -1,12 +1,12 @@
 import { NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
-import ApiError from '@/app/errors/ApiErrors';
-import { extractToken } from '@/app/helpers/extractToken';
-import { jwtHelpers } from '@/app/utils/jwtHelpers';
-import config from '@/config';
+import ApiError from '../errors/ApiErrors';
+import { extractToken } from '../helpers/extractToken';
+import { jwtHelpers } from '../utils/jwtHelpers';
+import config from '../../config';
 import { Secret } from 'jsonwebtoken';
-import redisClient from '@/config/redis';
-import { prisma } from '@/config/db';
+import redisClient from '../../config/redis';
+import { prisma } from '../../config/db';
 
 const auth = (...roles: string[]) => {
   return async (

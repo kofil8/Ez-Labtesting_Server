@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import ApiError from '../errors/ApiErrors';
-import config from '@/config';
+import config from '../../config';
 
 const emailSender = async (subject: string, email: string, html: string) => {
   const transporter = nodemailer.createTransport({

@@ -26,13 +26,7 @@
     /* Performance */
     "skipLibCheck": true,
     "incremental": true,
-    "tsBuildInfoFile": ".tsbuildinfo",
-
-    /* Path Aliases */
-    "baseUrl": "./src",
-    "paths": {
-      "@/*": ["*"]
-    }
+    "tsBuildInfoFile": ".tsbuildinfo"
   },
 
   "include": ["src/**/*"],

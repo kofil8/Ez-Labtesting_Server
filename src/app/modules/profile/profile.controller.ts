@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import catchAsync from '@/app/helpers/catchAsync';
-import sendResponse from '@/app/helpers/sendResponse';
+import catchAsync from '../../helpers/catchAsync';
+import sendResponse from '../../helpers/sendResponse';
 import httpStatus from 'http-status';
 import { ProfileService } from './profile.service';
 import { File as MulterFile } from 'multer';

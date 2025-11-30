@@ -1,14 +1,14 @@
-import ApiError from '@/app/errors/ApiErrors';
-import { LoginAttemptService } from '@/app/helpers/loginAttempts.service';
-import { emailTemplate } from '@/app/utils/emailtempForOTP';
-import { jwtHelpers } from '@/app/utils/jwtHelpers';
-import sentEmailUtility from '@/app/utils/sentEmailUtility';
-import config from '@/config';
-import { prisma } from '@/config/db';
-import redisClient from '@/config/redis';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import { Secret, SignOptions } from 'jsonwebtoken';
+import config from '../../../config';
+import { prisma } from '../../../config/db';
+import redisClient from '../../../config/redis';
+import ApiError from '../../errors/ApiErrors';
+import { LoginAttemptService } from '../../helpers/loginAttempts.service';
+import { emailTemplate } from '../../utils/emailtempForOTP';
+import { jwtHelpers } from '../../utils/jwtHelpers';
+import sentEmailUtility from '../../utils/sentEmailUtility';
 import { NotificationService } from '../notifications/notifications.service';
 
 type RegisterPayload = {

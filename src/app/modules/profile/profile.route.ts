@@ -1,10 +1,10 @@
 import express, { NextFunction, Request, Response } from 'express';
-import auth from '@/app/middlewares/auth';
+import auth from '../../middlewares/auth';
 import { ProfileController } from './profile.controller';
-import validateRequest from '@/app/middlewares/validateRequest';
+import validateRequest from '../../middlewares/validateRequest';
 import { ProfileValidation } from './profile.validation';
-import upload from '@/app/helpers/fileUploadHelper';
-import parseBodyData from '@/app/helpers/parseBodyData';
+import upload from '../../helpers/fileUploadHelper';
+import parseBodyData from '../../helpers/parseBodyData';
 
 const router = express.Router();
 
