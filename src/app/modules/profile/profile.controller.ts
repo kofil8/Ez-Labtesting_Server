@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
+import httpStatus from 'http-status';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
-import httpStatus from 'http-status';
 import { ProfileService } from './profile.service';
-import { File as MulterFile } from 'multer';
 
 const getProfile = catchAsync(async (req: Request & { user?: any }, res: Response) => {
   const result = await ProfileService.getProfileFromDB(req.user);
@@ -15,19 +14,21 @@ const getProfile = catchAsync(async (req: Request & { user?: any }, res: Respons
   });
 });
 
-const updateMyProfile = catchAsync(async (req: Request & { file?: MulterFile }, res: Response) => {
-  const id = req.user?.id as string;
-  const payload = req.body.bodyData;
-  const file = req.file as MulterFile | undefined;
-  const result = await ProfileService.updateMyProfileIntoDB(id, payload, file);
+const updateMyProfile = catchAsync(
+  async (req: Request & { file?: Express.Multer.File }, res: Response) => {
+    const id = req.user?.id as string;
+    const payload = req.body.bodyData;
+    const file = req.file as Express.Multer.File | undefined;
+    const result = await ProfileService.updateMyProfileIntoDB(id, payload, file);
 
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'User profile updated successfully',
-    data: result,
-  });
-});
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: 'User profile updated successfully',
+      data: result,
+    });
+  },
+);
 
 const changePassword = catchAsync(async (req: Request & { user?: any }, res: Response) => {
   const result = await ProfileService.changePasswordInDB(req.user, req.body);
