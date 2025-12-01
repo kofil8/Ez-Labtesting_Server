@@ -3,6 +3,7 @@ import ApiError from '../../errors/ApiErrors';
 import httpStatus from 'http-status';
 import bcrypt from 'bcrypt';
 import config from '../../../config';
+import { deleteFile } from '../../helpers/fileUploadHelper';
 
 const getProfileFromDB = async (user: any) => {
   const profile = await prisma.user.findUnique({
@@ -36,10 +37,23 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
   const existingUser = await prisma.user.findUnique({ where: { id } });
   if (!existingUser) throw new ApiError(httpStatus.BAD_REQUEST, 'User not found');
 
-  const profileImage =
-    file && file.originalname
-      ? `${config.backend_file_url}/uploads/${file.originalname}`
-      : existingUser.profileImage;
+  let profileImage = existingUser.profileImage;
+
+  // If new file is uploaded, delete old file from S3 and use new file URL
+  if (file && file.location) {
+    // Delete old profile image from S3 if it exists
+    if (existingUser.profileImage) {
+      try {
+        await deleteFile(existingUser.profileImage);
+      } catch (error) {
+        console.error('Failed to delete old profile image:', error);
+        // Continue with update even if deletion fails
+      }
+    }
+    
+    // Use S3 URL from multer-s3 (file.location contains the full S3 URL)
+    profileImage = file.location;
+  }
 
   const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
 

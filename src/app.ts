@@ -16,7 +16,7 @@ const morganFormat = ':method :url :status :response-time ms';
 
 // 🧩 Global middlewares
 const corsOptions = {
-  origin: ['http://localhost:3000'],
+  origin: ['https://ezlabtesting.com', 'https://www.ezlabtesting.com'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -37,9 +37,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(morganFormat));
 app.use(compression());
 app.use(cookieParser());
-
-// 📂 Static files
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // 📋 Logging
 app.use(morgan('dev'));
