@@ -84,16 +84,8 @@ Instead of `AmazonS3FullAccess`, create a custom policy:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::YOUR-BUCKET-NAME",
-        "arn:aws:s3:::YOUR-BUCKET-NAME/*"
-      ]
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::YOUR-BUCKET-NAME", "arn:aws:s3:::YOUR-BUCKET-NAME/*"]
     }
   ]
 }
@@ -114,11 +106,13 @@ AWS_S3_BUCKET_NAME=your-bucket-name-here
 ## Step 6: Test the Setup
 
 1. Start your server:
+
    ```bash
    yarn dev
    ```
 
 2. Test file upload using the profile image endpoint:
+
    ```bash
    PATCH /api/v1/profile/update
    ```
@@ -131,35 +125,42 @@ AWS_S3_BUCKET_NAME=your-bucket-name-here
 ## Changes Made
 
 ### 1. File Upload Helper (`src/app/helpers/fileUploadHelper.ts`)
+
 - ✅ Replaced `multer.diskStorage` with `multer-s3`
 - ✅ Files now upload directly to S3
 - ✅ Unique filenames using timestamp + random string
 - ✅ `deleteFile()` now uses S3 `DeleteObjectCommand`
 
 ### 2. Profile Service (`src/app/modules/profile/profile.service.ts`)
+
 - ✅ Uses S3 URL from `file.location` (provided by multer-s3)
 - ✅ Deletes old profile image from S3 before uploading new one
 - ✅ Fixed bug: now uses correct filename instead of originalname
 
 ### 3. AWS S3 Client (`src/lib/awsS3.ts`)
+
 - ✅ New file: Initializes S3Client with credentials
 
 ### 4. Configuration (`src/config/index.ts`, `src/config/env.ts`)
+
 - ✅ Added AWS configuration section
 - ✅ Environment variable validation for AWS credentials
 
 ### 5. App Configuration (`src/app.ts`)
+
 - ✅ Removed static file serving middleware (`/uploads`)
 - ✅ Files are now served directly from S3
 
 ## File URL Format
 
 **Before (Local):**
+
 ```
 http://localhost:7001/uploads/profile-pic.png
 ```
 
 **After (S3):**
+
 ```
 https://bucket-name.s3.region.amazonaws.com/uploads/profile-pic-1733097600000-123456789.png
 ```
@@ -193,6 +194,7 @@ For better performance and cost optimization:
 - **Requests**: GET requests are $0.0004 per 1,000 requests
 
 ### Tips:
+
 - Use CloudFront to reduce S3 data transfer costs
 - Set lifecycle policies to move old files to S3 Glacier
 - Compress images before upload
@@ -200,20 +202,24 @@ For better performance and cost optimization:
 ## Troubleshooting
 
 ### Error: "Access Denied"
+
 - Check bucket policy allows public read
 - Verify IAM user has correct permissions
 - Ensure CORS is configured
 
 ### Error: "The bucket does not allow ACLs"
+
 - Go to bucket **Permissions** → **Object Ownership**
 - Select **ACLs enabled**
 
 ### Error: "Credentials not found"
+
 - Verify `.env` file has all AWS variables
 - Check environment variables are loaded correctly
 - Restart server after updating `.env`
 
 ### Files not accessible
+
 - Check bucket policy allows public `GetObject`
 - Verify CORS configuration matches your frontend domain
 
@@ -247,11 +253,13 @@ async function migrateFiles() {
     const key = `uploads/${file}`;
 
     // Upload to S3
-    await s3Client.send(new PutObjectCommand({
-      Bucket: config.aws.s3BucketName,
-      Key: key,
-      Body: fileContent,
-    }));
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: config.aws.s3BucketName,
+        Key: key,
+        Body: fileContent,
+      }),
+    );
 
     const s3Url = `https://${config.aws.s3BucketName}.s3.${config.aws.region}.amazonaws.com/${key}`;
     console.log(`Uploaded: ${file} -> ${s3Url}`);
@@ -276,6 +284,7 @@ migrateFiles();
 ```
 
 Run with:
+
 ```bash
 ts-node scripts/migrate-to-s3.ts
 ```
@@ -283,6 +292,7 @@ ts-node scripts/migrate-to-s3.ts
 ## Support
 
 For issues or questions:
+
 - AWS S3 Documentation: https://docs.aws.amazon.com/s3/
 - multer-s3 GitHub: https://github.com/badunk/multer-s3
 - AWS SDK for JavaScript: https://docs.aws.amazon.com/sdk-for-javascript/
@@ -290,6 +300,7 @@ For issues or questions:
 ## Summary
 
 Your application now:
+
 - ✅ Uploads files directly to AWS S3
 - ✅ Deletes old files when updating
 - ✅ Serves files from S3 (no local storage)

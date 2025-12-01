@@ -1,6 +1,7 @@
 # 🚀 Quick Start Guide - AWS S3 File Uploads
 
 ## Prerequisites Checklist
+
 - [ ] AWS Account created
 - [ ] S3 bucket created
 - [ ] IAM user with S3 access created
@@ -9,6 +10,7 @@
 ## Quick Setup (5 Minutes)
 
 ### 1. Add AWS Credentials to `.env`
+
 ```env
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your-access-key-id
@@ -17,7 +19,9 @@ AWS_S3_BUCKET_NAME=your-bucket-name
 ```
 
 ### 2. Configure S3 Bucket CORS
+
 In AWS Console → S3 → Your Bucket → Permissions → CORS:
+
 ```json
 [
   {
@@ -30,7 +34,9 @@ In AWS Console → S3 → Your Bucket → Permissions → CORS:
 ```
 
 ### 3. Set Bucket Policy for Public Read
+
 In AWS Console → S3 → Your Bucket → Permissions → Bucket Policy:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -44,15 +50,19 @@ In AWS Console → S3 → Your Bucket → Permissions → Bucket Policy:
   ]
 }
 ```
+
 **Replace `YOUR-BUCKET-NAME` with your actual bucket name**
 
 ### 4. Start Your Server
+
 ```bash
 yarn dev
 ```
 
 ### 5. Test Upload
+
 Upload a profile image using your API endpoint:
+
 ```
 PATCH /api/v1/profile/update
 ```
@@ -66,6 +76,7 @@ yarn s3:migrate
 ```
 
 This will:
+
 - Upload all files from `uploads/` to S3
 - Update database URLs to S3 URLs
 - Show progress and summary
@@ -73,6 +84,7 @@ This will:
 ## Verify Setup
 
 ### Test File Upload
+
 ```bash
 curl -X PATCH http://localhost:7001/api/v1/profile/update \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -81,6 +93,7 @@ curl -X PATCH http://localhost:7001/api/v1/profile/update \
 ```
 
 ### Expected Response
+
 ```json
 {
   "success": true,
@@ -91,30 +104,35 @@ curl -X PATCH http://localhost:7001/api/v1/profile/update \
 ```
 
 ### Verify File is Accessible
+
 Open the S3 URL in your browser - you should see the image.
 
 ## Common Issues
 
 ### ❌ "Access Denied" Error
+
 **Solution**: Check bucket policy allows public `GetObject`
 
 ### ❌ "Credentials not found" Error
+
 **Solution**: Verify `.env` has all AWS variables and restart server
 
 ### ❌ "CORS Error" in Frontend
+
 **Solution**: Add your frontend domain to bucket CORS policy
 
 ### ❌ "The bucket does not allow ACLs"
+
 **Solution**: Go to Bucket → Permissions → Object Ownership → Enable ACLs
 
 ## Scripts Reference
 
-| Command | Description |
-|---------|-------------|
-| `yarn dev` | Start development server |
+| Command           | Description               |
+| ----------------- | ------------------------- |
+| `yarn dev`        | Start development server  |
 | `yarn s3:migrate` | Migrate local files to S3 |
-| `yarn build` | Build for production |
-| `yarn start` | Start production server |
+| `yarn build`      | Build for production      |
+| `yarn start`      | Start production server   |
 
 ## File Structure Changes
 
@@ -140,6 +158,7 @@ src/
 ## Environment Variables Summary
 
 **Required:**
+
 ```env
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=AKIA...
@@ -148,6 +167,7 @@ AWS_S3_BUCKET_NAME=your-bucket-name
 ```
 
 **No longer needed:**
+
 - ~~`BACKEND_FILE_URL`~~ (still used in config but not for uploads)
 
 ## Next Steps

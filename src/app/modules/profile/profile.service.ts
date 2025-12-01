@@ -1,8 +1,8 @@
+import bcrypt from 'bcrypt';
+import httpStatus from 'http-status';
+import config from '../../../config';
 import { prisma } from '../../../config/db';
 import ApiError from '../../errors/ApiErrors';
-import httpStatus from 'http-status';
-import bcrypt from 'bcrypt';
-import config from '../../../config';
 import { deleteFile } from '../../helpers/fileUploadHelper';
 
 const getProfileFromDB = async (user: any) => {
@@ -50,7 +50,7 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
         // Continue with update even if deletion fails
       }
     }
-    
+
     // Use S3 URL from multer-s3 (file.location contains the full S3 URL)
     profileImage = file.location;
   }

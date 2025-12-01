@@ -1,10 +1,10 @@
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Request } from 'express';
 import multer, { FileFilterCallback } from 'multer';
 import multerS3 from 'multer-s3';
 import path from 'path';
-import { Request } from 'express';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client } from '../../lib/awsS3';
 import config from '../../config';
+import { s3Client } from '../../lib/awsS3';
 
 // Type for multer file
 type MulterFile = Express.Multer.File;
@@ -27,11 +27,11 @@ const storage = multerS3({
     const ext = path.extname(file.originalname);
     let baseName = path.basename(file.originalname, ext);
     baseName = baseName.replace(/\s+/g, '-'); // Replace spaces with hyphens
-    
+
     // Generate unique filename using timestamp and random string
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const finalName = `uploads/${baseName}-${uniqueSuffix}${ext}`;
-    
+
     cb(null, finalName);
   },
 });

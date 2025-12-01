@@ -1,15 +1,14 @@
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Application, ErrorRequestHandler, Request, Response } from 'express';
 import helmet from 'helmet';
 import httpStatus from 'http-status';
 import morgan from 'morgan';
-import path from 'path';
 import GlobalErrorHandler from './app/middlewares/globalErrorHandler';
-import { defaultLimiter, loginLimiter } from './app/middlewares/rateLimit';
+import { defaultLimiter } from './app/middlewares/rateLimit';
 import router from './app/routes';
 import logger from './app/utils/logger';
-import cookieParser from 'cookie-parser';
 
 const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
