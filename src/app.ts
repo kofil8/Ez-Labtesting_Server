@@ -15,7 +15,7 @@ const morganFormat = ':method :url :status :response-time ms';
 
 // 🧩 Global middlewares
 const corsOptions = {
-  origin: ['https://ezlabtesting.com', 'https://www.ezlabtesting.com'],
+  origin: ['*'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
