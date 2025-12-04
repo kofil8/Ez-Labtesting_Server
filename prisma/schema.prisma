@@ -52,7 +52,7 @@ model User {
 // ---------------- PUSH SUBSCRIPTIONS ----------------
 model PushToken {
   id        Int      @id @default(autoincrement())
-  userId    String? // ✅ FIXED — must match User.id type
+  userId    String?
   token     String   @unique
   platform  String?
   revoked   Boolean  @default(false)
