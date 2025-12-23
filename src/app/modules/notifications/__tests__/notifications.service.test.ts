@@ -90,9 +90,7 @@ describe('NotificationService.sendNotification', () => {
 
     prisma.notification.update.mockResolvedValue({});
 
-    prisma.pushToken.findMany.mockResolvedValue([
-      { token: 'fcm-token', revoked: false },
-    ]);
+    prisma.pushToken.findMany.mockResolvedValue([{ token: 'fcm-token', revoked: false }]);
   });
 
   it('queues FCM and email when user is offline and notification is critical', async () => {
@@ -110,7 +108,7 @@ describe('NotificationService.sendNotification', () => {
         token: 'fcm-token',
         notification: { title: 'Push title John', body: 'Push body John' },
       }),
-      expect.objectContaining({ attempts: 3 })
+      expect.objectContaining({ attempts: 3 }),
     );
 
     // Email queued
@@ -120,7 +118,7 @@ describe('NotificationService.sendNotification', () => {
         subject: 'Subject John',
         html: 'Email body John',
       }),
-      expect.any(Object)
+      expect.any(Object),
     );
 
     // No socket emit
@@ -138,7 +136,7 @@ describe('NotificationService.sendNotification', () => {
     expect(socketManager.emitToUser).toHaveBeenCalledWith(
       'user-1',
       'notification:new',
-      expect.objectContaining({ title: 'Push title Jane' })
+      expect.objectContaining({ title: 'Push title Jane' }),
     );
 
     // No FCM queued because user online
