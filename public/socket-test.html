@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Socket.IO Notification Test</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+      body {
+        font-family: Arial;
+        margin: 20px;
+      }
+      .console {
+        border: 1px solid #ccc;
+        padding: 10px;
+        height: 300px;
+        overflow-y: auto;
+        background: #f5f5f5;
+      }
+      input,
+      button {
+        padding: 8px;
+        margin: 5px;
+      }
+      button {
+        background: #007bff;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🔔 Notification Socket Test</h1>
+
+    <div>
+      <input type="text" id="token" placeholder="Enter JWT token" />
+      <button onclick="connect()">Connect</button>
+      <button onclick="disconnect()">Disconnect</button>
+    </div>
+
+    <div>
+      <input type="text" id="notifId" placeholder="Notification ID" />
+      <button onclick="markAsRead()">Mark As Read</button>
+      <button onclick="markAllAsRead()">Mark All As Read</button>
+    </div>
+
+    <div>
+      <button onclick="fetchNotifications()">Fetch Notifications</button>
+      <input type="number" id="page" placeholder="Page" value="1" />
+      <input type="number" id="limit" placeholder="Limit" value="20" />
+    </div>
+
+    <h3>Console Output:</h3>
+    <div class="console" id="console"></div>
+
+    <script>
+      let socket = null;
+
+      function log(message) {
+        const consoleEl = document.getElementById('console');
+        const timestamp = new Date().toLocaleTimeString();
+        consoleEl.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      function connect() {
+        const token = document.getElementById('token').value;
+        if (!token) {
+          log('❌ Please enter JWT token');
+          return;
+        }
+
+        socket = io('http://localhost:7001', {
+          auth: { token },
+          transports: ['websocket', 'polling'],
+        });
+
+        socket.on('connect', () => {
+          log(`✅ Connected! Socket ID: ${socket.id}`);
+        });
+
+        socket.on('notification:count-update', (data) => {
+          log(`📊 Unread count: ${data.unreadCount}`);
+        });
+
+        socket.on('notification:new', (data) => {
+          log(`📬 New notification: ${data.title}`);
+          console.log('Full notification:', data);
+        });
+
+        socket.on('notification:data', (data) => {
+          log(`📋 Fetched ${data.data.length} notifications`);
+          console.log('Notifications:', data);
+        });
+
+        socket.on('notification:missed', (data) => {
+          log(`⏮️ Missed notification: ${data.title}`);
+        });
+
+        socket.on('error', (error) => {
+          log(`❌ Error: ${error.message}`);
+        });
+
+        socket.on('disconnect', () => {
+          log('🔌 Disconnected');
+        });
+
+        socket.on('connect_error', (error) => {
+          log(`❌ Connection error: ${error.message}`);
+        });
+      }
+
+      function disconnect() {
+        if (socket) {
+          socket.disconnect();
+          log('🔌 Disconnecting...');
+        }
+      }
+
+      function markAsRead() {
+        const id = document.getElementById('notifId').value;
+        if (!id) {
+          log('❌ Please enter notification ID');
+          return;
+        }
+        socket.emit('notification:mark-read', { id });
+        log(`✅ Sent mark-read for ${id}`);
+      }
+
+      function markAllAsRead() {
+        socket.emit('notification:mark-all-read');
+        log('✅ Sent mark-all-read');
+      }
+
+      function fetchNotifications() {
+        const page = parseInt(document.getElementById('page').value) || 1;
+        const limit = parseInt(document.getElementById('limit').value) || 20;
+        socket.emit('notification:fetch', { page, limit });
+        log(`✅ Fetching page ${page}, limit ${limit}`);
+      }
+    </script>
+  </body>
+</html>

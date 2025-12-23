@@ -1,6 +1,7 @@
 import * as bcrypt from 'bcrypt';
 import config from '../../config';
 import { prisma } from '../../config/db';
+import { seedNotificationTemplates } from './notificationTemplates';
 
 const seedSuperAdmin = async (): Promise<void> => {
   try {
@@ -38,6 +39,9 @@ const seedSuperAdmin = async (): Promise<void> => {
     } else {
       console.log('ℹ️ Super Admin already exists, skipping seeding.');
     }
+
+    // ✅ Seed notification templates
+    await seedNotificationTemplates();
   } catch (error) {
     console.error('❌ Error seeding Super Admin:', error);
   }

@@ -1,4 +1,4 @@
-import express, { NextFunction, Request, Response } from 'express';
+import express from 'express';
 import auth from '../../middlewares/auth';
 import { ProfileController } from './profile.controller';
 import validateRequest from '../../middlewares/validateRequest';
