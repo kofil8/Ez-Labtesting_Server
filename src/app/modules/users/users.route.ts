@@ -3,20 +3,31 @@ import auth from '../../middlewares/auth';
 import { UsersController } from './users.controller';
 import validateRequest from '../../middlewares/validateRequest';
 import { UserValidation } from './users.validation';
+import { Role } from '@prisma/client';
 
 const router = express.Router();
 
-router.get('/', auth(), UsersController.getUsers);
+// Self endpoints
+router.get('/me', auth(), UsersController.getMe);
+router.patch('/me', auth(), validateRequest(UserValidation.updateMe), UsersController.updateMe);
 
-router.get('/:id', auth(), UsersController.getUserById);
+// Admin endpoints
+router.get('/', auth(Role.ADMIN, Role.SUPER_ADMIN), UsersController.getUsers);
 
-router.delete('/:id', auth(), UsersController.deleteUser);
+router.get('/:id', auth(Role.ADMIN, Role.SUPER_ADMIN), UsersController.getUserById);
 
-router.post('/', auth(), validateRequest(UserValidation.createUser), UsersController.createUser);
+router.delete('/:id', auth(Role.ADMIN, Role.SUPER_ADMIN), UsersController.deleteUser);
+
+router.post(
+  '/',
+  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  validateRequest(UserValidation.createUser),
+  UsersController.createUser,
+);
 
 router.patch(
   '/:id',
-  auth(),
+  auth(Role.ADMIN, Role.SUPER_ADMIN),
   validateRequest(UserValidation.updateUser),
   UsersController.updateUser,
 );

@@ -7,12 +7,17 @@ import {
 import { initializeQueueProcessors } from './app/helpers/notificationQueue.processor';
 import auth from './app/middlewares/auth';
 import { initNotificationSocket } from './app/modules/notifications/notifications.socket';
+import { initOrderTrackingSocket } from './app/modules/orders/orders.socket';
+import { ensureCheckoutExpiryCron } from './app/queues/checkoutExpiry.queue';
 import seedSuperAdmin from './app/seeding';
 import config from './config';
 import { initializeBullBoard } from './config/bullBoard';
 import { connectDatabases, disconnectDatabases } from './config/db';
 import { closeQueues, initializeQueues } from './config/queue';
 import { closeSocketIO, initializeSocketIO } from './config/socket';
+
+// Initialize BullMQ workers
+import './app/workers';
 
 let server: http.Server | null = null;
 const PORT = Number(config.port) || 9001;
@@ -39,6 +44,10 @@ async function startServer() {
     initializeQueues();
     console.log('📋 Bull queues initialized');
 
+    // Ensure repeatable checkout expiry job is scheduled on boot
+    await ensureCheckoutExpiryCron();
+    console.log('⏱️ Checkout expiry cron ensured');
+
     // Initialize queue processors
     initializeQueueProcessors();
     console.log('⚙️ Queue processors initialized');
@@ -51,6 +60,10 @@ async function startServer() {
     // Initialize notification socket events
     initNotificationSocket(io);
     console.log('📬 Notification socket events initialized');
+
+    // Initialize order tracking socket events
+    initOrderTrackingSocket(io);
+    console.log('🧪 Order tracking socket events initialized');
 
     // Start notification cleanup job
     startNotificationCleanup();

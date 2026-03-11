@@ -1,7 +1,7 @@
+import httpStatus from 'http-status';
 import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
-import httpStatus from 'http-status';
 import { AuthServices } from './auth.service';
 
 // ---------------------------
@@ -57,7 +57,7 @@ const loginUser = catchAsync(async (req, res) => {
   // 👇 Extract pushToken & platform from body
   const { pushToken, platform } = req.body;
 
-  const { accessToken, refreshToken, user } = await AuthServices.loginUserFromDB(
+  const result = await AuthServices.loginUserFromDB(
     {
       ...req.body,
       pushToken,
@@ -66,13 +66,42 @@ const loginUser = catchAsync(async (req, res) => {
     ip,
   );
 
+  // Check if MFA is required
+  if (result.mfaRequired) {
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      message: 'MFA verification required',
+      data: {
+        mfaRequired: true,
+        tempToken: result.tempToken,
+        user: result.user,
+        isFirstLogin: result.isFirstLogin,
+      },
+    });
+    return;
+  }
+
+  const { accessToken, refreshToken, user } = result;
+
   // Store refresh token in secure cookie
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: true,
+    sameSite: 'none',
+    domain: 'localhost',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  // Also store access token in httpOnly cookie for backend consumption
+  // Shorter expiry aligned with JWT lifetime
+  res.cookie('accessToken', accessToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    domain: 'localhost',
+    path: '/',
+    maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
   sendResponse(res, {
@@ -80,7 +109,9 @@ const loginUser = catchAsync(async (req, res) => {
     message: 'Logged in successfully',
     data: {
       accessToken,
+      refreshToken,
       user,
+      isFirstLogin: result.isFirstLogin,
     },
   });
 });
@@ -99,10 +130,21 @@ const refreshToken = catchAsync(async (req, res) => {
 
   res.cookie('refreshToken', result.refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: true,
+    sameSite: 'none',
+    domain: 'localhost',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  // Update access token cookie alongside refresh
+  res.cookie('accessToken', result.accessToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    domain: 'localhost',
+    path: '/',
+    maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
   sendResponse(res, {
@@ -110,6 +152,7 @@ const refreshToken = catchAsync(async (req, res) => {
     message: 'Token refreshed successfully',
     data: {
       accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
     },
   });
 });
@@ -134,8 +177,18 @@ const logoutUser = catchAsync(async (req, res) => {
   // Clear refresh token cookie
   res.clearCookie('refreshToken', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: true,
+    sameSite: 'none',
+    domain: 'localhost',
+    path: '/',
+  });
+
+  // Clear access token cookie
+  res.clearCookie('accessToken', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    domain: 'localhost',
     path: '/',
   });
 

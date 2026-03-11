@@ -1,12 +1,13 @@
-import { NextFunction, Request, Response } from "express";
-import { AnyZodObject, ZodType } from "zod";
+import { NextFunction, Request, Response } from 'express';
+import { AnyZodObject, ZodType } from 'zod';
 
 const validateRequest =
-  (schema: AnyZodObject) =>
-  async (req: Request, res: Response, next: NextFunction) => {
+  (schema: AnyZodObject) => async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync({
         body: req.body,
+        params: req.params,
+        query: req.query,
       });
       return next();
     } catch (err) {
@@ -15,8 +16,7 @@ const validateRequest =
   };
 
 export const validateRequestArray =
-  (schema: ZodType) =>
-  async (req: Request, res: Response, next: NextFunction) => {
+  (schema: ZodType) => async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync(req.body);
       return next();

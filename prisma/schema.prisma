@@ -1,0 +1,497 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  email                 String            @unique
+  password              String
+  phoneNumber           String            @db.VarChar(20)
+  profileImage          String?
+  bio                   String?           @db.VarChar(500)
+  firstName             String?           @db.VarChar(100)
+  lastName              String?           @db.VarChar(100)
+  dateOfBirth           DateTime?
+  address               String?           @db.VarChar(255)
+  bloodType             String?           @db.VarChar(10)
+  allergies             String?           @db.VarChar(500)
+  medicalConditions     String?           @db.VarChar(500)
+  medications           String?           @db.VarChar(500)
+  emergencyContactName  String?           @db.VarChar(100)
+  emergencyContactPhone String?           @db.VarChar(20)
+  isVerified            Boolean           @default(false)
+  role                  Role              @default(CUSTOMER)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  lastAction            DateTime?
+  lastLogin             DateTime?
+  status                UserStatus        @default(ACTIVE)
+  mfaBackupCodes        String[]          @default([])
+  mfaEnabled            Boolean           @default(false)
+  mfaSecret             String?
+  mfaSetupAt            DateTime?
+  gender                Gender?
+  checkoutSessions      CheckoutSession[]
+  notifications         Notification[]
+  orders                Order[]
+  pushTokens            PushToken[]
+  reviewHelpfulMarks    ReviewHelpful[]
+  sentSupportMessages   SupportMessage[]  @relation("SupportMessageSender")
+  supportTickets        SupportTicket[]
+  reviews               TestReview[]
+  userConnection        UserConnection?
+
+  @@index([email])
+}
+
+model PushToken {
+  id        Int      @id @default(autoincrement())
+  userId    String?
+  token     String   @unique
+  platform  String?
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id           String               @id @default(uuid())
+  userId       String
+  type         NotificationType
+  title        String               @db.VarChar(200)
+  body         String
+  data         Json?
+  priority     NotificationPriority @default(MEDIUM)
+  isRead       Boolean              @default(false)
+  readAt       DateTime?
+  deliveredVia String[]             @default([])
+  sentAt       DateTime             @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime             @default(now())
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([expiresAt])
+  @@index([priority, createdAt])
+  @@index([sentAt])
+}
+
+model UserConnection {
+  id                 String    @id @default(uuid())
+  userId             String    @unique
+  lastConnectedAt    DateTime  @default(now())
+  lastDisconnectedAt DateTime?
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model NotificationTemplate {
+  id           String           @id @default(uuid())
+  type         NotificationType @unique
+  name         String           @db.VarChar(200)
+  description  String?
+  emailSubject String           @db.VarChar(200)
+  emailBody    String
+  pushTitle    String           @db.VarChar(200)
+  pushBody     String           @db.VarChar(500)
+  variables    Json             @default("[]")
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([type])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tests     Test[]
+
+  @@index([name])
+}
+
+model Test {
+  id           String       @id @default(uuid())
+  testCode     String       @db.VarChar(100)
+  testName     String       @db.VarChar(200)
+  price        Float
+  testImage    String       @db.VarChar(500)
+  description  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  categoryId   String
+  isActive     Boolean      @default(true)
+  isPublished  Boolean      @default(false)
+  specimenType String       @db.VarChar(200)
+  turnaround   Int
+  orders       Order[]
+  orderItems   OrderItem[]
+  panels       PanelTest[]
+  category     Category     @relation(fields: [categoryId], references: [id])
+  testDetails  TestDetail[]
+  reviews      TestReview[]
+
+  @@index([categoryId])
+  @@index([isPublished, isActive])
+}
+
+model TestDetail {
+  id               String   @id @default(uuid())
+  testId           String
+  turnaround       Int?
+  component        String   @db.VarChar(200)
+  method           String   @db.VarChar(200)
+  collectionNotes  String?
+  clinicalUtility  String?
+  cptCode          String   @db.VarChar(100)
+  testingLocatiion String   @db.VarChar(200)
+  temperatures     Json     @default("[]")
+  preparation      String?
+  collectionMethod String?
+  resultsDelivery  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  test             Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+}
+
+model TestPanel {
+  id              String      @id @default(uuid())
+  name            String      @db.VarChar(200)
+  description     String?
+  discountPercent Float       @default(0)
+  isActive        Boolean     @default(true)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  basePrice       Float
+  panelImage      String?     @db.VarChar(500)
+  orderItems      OrderItem[]
+  tests           PanelTest[]
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+model PanelTest {
+  id         String    @id @default(uuid())
+  panelId    String
+  testId     String
+  sortOrder  Int       @default(0)
+  isRequired Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  panel      TestPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  test       Test      @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([panelId, testId])
+  @@index([testId])
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  adminId       String
+  adminName     String
+  action        String   @db.VarChar(50)
+  resource      String   @db.VarChar(100)
+  resourceId    String   @db.VarChar(100)
+  details       String
+  changesBefore String?
+  changesAfter  String?
+  ipAddress     String?  @db.VarChar(50)
+  userAgent     String?
+  status        String   @default("success") @db.VarChar(20)
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  @@index([adminId])
+  @@index([resource])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model WebhookEvent {
+  id              String    @id @default(uuid())
+  provider        String    @db.VarChar(30)
+  externalEventId String    @db.VarChar(120)
+  eventType       String    @db.VarChar(120)
+  status          String    @default("PROCESSING") @db.VarChar(20)
+  attemptCount    Int       @default(1)
+  lastError       String?
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([provider, externalEventId])
+  @@index([status, createdAt])
+}
+
+model TestReview {
+  id                 String          @id @default(uuid())
+  testId             String
+  userId             String
+  rating             Int             @db.SmallInt
+  title              String          @db.VarChar(200)
+  comment            String          @db.VarChar(1000)
+  isVerifiedPurchase Boolean         @default(false)
+  helpfulCount       Int             @default(0)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  helpfulMarks       ReviewHelpful[]
+  test               Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, userId])
+  @@index([testId])
+  @@index([userId])
+  @@index([rating])
+  @@index([createdAt])
+}
+
+model ReviewHelpful {
+  id        String     @id @default(uuid())
+  reviewId  String
+  userId    String
+  createdAt DateTime   @default(now())
+  review    TestReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+  @@index([userId])
+}
+
+model Order {
+  id                    String               @id @default(uuid())
+  userId                String?
+  labTestId             String?
+  labCenterId           String?
+  status                OrderStatus          @default(PENDING_PAYMENT)
+  subtotal              Float
+  processingFee         Float
+  total                 Float
+  stripePaymentIntentId String?              @unique
+  accessOrderId         String?              @unique
+  requisitionPdfUrl     String?
+  labVisitInstructions  String?
+  accessPayloadJson     Json
+  accessCsv             String?
+  paidAt                DateTime?
+  labOrderPlacedAt      DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  manualReviewRequired  Boolean              @default(false)
+  currentTrackingStep   Int                  @default(1)
+  lastNotificationAt    DateTime?
+  notificationsSent     String[]             @default([])
+  trackingUpdatedAt     DateTime?
+  checkoutSession       CheckoutSession[]
+  labCenter             LabCenter?           @relation(fields: [labCenterId], references: [id])
+  test                  Test?                @relation(fields: [labTestId], references: [id])
+  user                  User?                @relation(fields: [userId], references: [id])
+  items                 OrderItem[]
+  trackingEvents        OrderTrackingEvent[]
+  supportTickets        SupportTicket[]
+
+  @@index([userId])
+  @@index([labTestId])
+  @@index([labCenterId])
+  @@index([status])
+  @@index([paidAt])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String        @id @default(uuid())
+  orderId   String
+  type      OrderItemType
+  testId    String?
+  panelId   String?
+  quantity  Int           @default(1)
+  unitPrice Float
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  panel     TestPanel?    @relation(fields: [panelId], references: [id])
+  test      Test?         @relation(fields: [testId], references: [id])
+
+  @@index([orderId])
+  @@index([type])
+}
+
+model CheckoutSession {
+  id                   String         @id @default(uuid())
+  userId               String
+  status               CheckoutStatus @default(DRAFT)
+  patientJson          Json
+  itemsJson            Json
+  subtotal             Float
+  processingFee        Float
+  total                Float
+  currency             String         @default("usd")
+  orderId              String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  expiresAt            DateTime
+  submitIdempotencyKey String?        @db.VarChar(100)
+  order                Order?         @relation(fields: [orderId], references: [id])
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+model SupportTicket {
+  id             String           @id @default(uuid())
+  ticketNumber   String           @unique @db.VarChar(30)
+  userId         String
+  orderId        String?
+  subject        String           @db.VarChar(200)
+  category       String           @default("general") @db.VarChar(50)
+  priority       String           @default("medium") @db.VarChar(20)
+  status         String           @default("open") @db.VarChar(20)
+  responseTarget DateTime
+  respondedAt    DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  messages       SupportMessage[]
+  order          Order?           @relation(fields: [orderId], references: [id])
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([priority, status])
+  @@index([createdAt])
+  @@index([orderId])
+}
+
+model SupportMessage {
+  id         String        @id @default(uuid())
+  ticketId   String
+  senderId   String
+  senderType String        @db.VarChar(20)
+  message    String
+  createdAt  DateTime      @default(now())
+  sender     User          @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([senderId])
+}
+
+model OrderTrackingEvent {
+  id        String   @id @default(uuid())
+  orderId   String
+  step      Int
+  status    String   @db.VarChar(50)
+  message   String?  @db.VarChar(500)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([step, status])
+}
+
+model LabCenter {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(200)
+  address      String   @db.VarChar(500)
+  phone        String?  @db.VarChar(20)
+  email        String?  @db.VarChar(200)
+  website      String?  @db.VarChar(500)
+  type         String   @db.VarChar(100)
+  hours        String?  @db.VarChar(500)
+  status       String   @default("Open") @db.VarChar(50)
+  latitude     Float
+  longitude    Float
+  rating       Float    @default(0)
+  reviewCount  Int      @default(0)
+  isActive     Boolean  @default(true)
+  lastVerified DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  orders       Order[]
+
+  @@index([latitude, longitude])
+  @@index([isActive])
+  @@index([type])
+  @@index([lastVerified])
+}
+
+enum OrderItemType {
+  TEST
+  PANEL
+}
+
+enum CheckoutStatus {
+  DRAFT
+  SUBMITTED
+  EXPIRED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_PROCESSING
+  PAID
+  LAB_ORDER_PLACED
+  COMPLETED
+  FAILED
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  LAB_PARTNER
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  BLOCKED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+  OTHER
+}
+
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_CONFIRMED
+  ORDER_CANCELLED
+  ORDER_COMPLETED
+  ORDER_IN_PROGRESS
+  RESULTS_READY
+  RESULTS_ABNORMAL
+  APPOINTMENT_SCHEDULED
+  APPOINTMENT_REMINDER
+  NEW_DISCOUNT
+  DISCOUNT_EXPIRING
+  LAB_CENTER_UPDATED
+  LAB_CENTER_CLOSED
+  SYSTEM_ALERT
+  ADMIN_ANNOUNCEMENT
+  WELCOME
+  ACCOUNT_VERIFIED
+  PASSWORD_RESET
+}
+
+enum NotificationPriority {
+  HIGH
+  MEDIUM
+  LOW
+}

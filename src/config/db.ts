@@ -1,5 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import redisClient from '../config/redis';
+import prisma from '../shared/prisma';
 
 /**
  * --------------------------------------------
@@ -7,9 +7,9 @@ import redisClient from '../config/redis';
  * --------------------------------------------
  */
 
-export const prisma = new PrismaClient({
-  log: ['info', 'warn', 'error'],
-});
+// NOTE: Prisma client is a singleton exported from src/shared/prisma.ts
+// Do not instantiate additional PrismaClient instances.
+export { prisma } from '../shared/prisma';
 
 export const connectPostgres = async () => {
   try {
@@ -17,7 +17,7 @@ export const connectPostgres = async () => {
     console.log('✅ PostgreSQL (Prisma) connected');
   } catch (error) {
     console.error('❌ PostgreSQL connection failed:', error);
-    process.exit(1);
+    throw error; // Let the caller handle the error
   }
 };
 
@@ -81,15 +81,20 @@ export const disconnectRedis = async () => {
 
 export const connectDatabases = async () => {
   console.log('🔵 connectDatabases(): starting...');
-
-  console.log('🔵 connecting Postgres...');
-  await connectPostgres();
-  console.log('🟢 Postgres resolved');
-
-  console.log('🔵 connecting Redis...');
-  await connectRedis();
-  console.log('🟢 Redis resolved');
-
+  try {
+    console.log('🔵 connecting Postgres...');
+    await connectPostgres();
+    console.log('🟢 Postgres resolved');
+  } catch (error) {
+    console.error('🔴 Postgres connection failed. Continuing without DB.');
+  }
+  try {
+    console.log('🔵 connecting Redis...');
+    await connectRedis();
+    console.log('🟢 Redis resolved');
+  } catch (error) {
+    console.error('🔴 Redis connection failed. Continuing without Redis.');
+  }
   console.log('🔵 connectDatabases(): completed.');
 };
 

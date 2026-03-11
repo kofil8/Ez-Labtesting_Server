@@ -8,6 +8,8 @@ import {
   UpdateTemplateInput,
 } from './templates.validation';
 
+const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
+
 export const TemplatesController = {
   /**
    * Get all templates
@@ -30,7 +32,7 @@ export const TemplatesController = {
    * Get template by ID
    */
   getTemplateById: catchAsync(async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = asParamString(req.params.id);
 
     const template = await TemplatesService.getTemplateById(id);
 
@@ -78,7 +80,7 @@ export const TemplatesController = {
    * Update template
    */
   updateTemplate: catchAsync(async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = asParamString(req.params.id);
     const data: UpdateTemplateInput = req.body;
 
     const template = await TemplatesService.updateTemplate(id, data);
@@ -95,7 +97,7 @@ export const TemplatesController = {
    * Delete template
    */
   deleteTemplate: catchAsync(async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = asParamString(req.params.id);
 
     await TemplatesService.deleteTemplate(id);
 
@@ -110,7 +112,7 @@ export const TemplatesController = {
    * Test template rendering
    */
   testTemplate: catchAsync(async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = asParamString(req.params.id);
     const { data }: TestTemplateInput = req.body;
 
     const result = await TemplatesService.testTemplate(id, data);

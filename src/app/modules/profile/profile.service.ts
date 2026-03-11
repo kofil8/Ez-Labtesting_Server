@@ -1,9 +1,38 @@
+import { Gender } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import config from '../../../config';
 import { prisma } from '../../../config/db';
 import ApiError from '../../errors/ApiErrors';
 import { deleteFile } from '../../helpers/fileUploadHelper';
+
+const GENDER_ALIASES: Record<string, Gender> = {
+  male: 'MALE',
+  female: 'FEMALE',
+  non_binary: 'NON_BINARY',
+  prefer_not_to_say: 'PREFER_NOT_TO_SAY',
+  other: 'OTHER',
+};
+
+const GENDER_ENUM_VALUES = new Set<Gender>(Object.values(GENDER_ALIASES));
+
+const normalizeGender = (value: unknown): Gender | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  const upperValue = trimmedValue.toUpperCase() as Gender;
+  if (GENDER_ENUM_VALUES.has(upperValue)) {
+    return upperValue;
+  }
+
+  return GENDER_ALIASES[trimmedValue.toLowerCase()];
+};
 
 const getProfileFromDB = async (user: any) => {
   const profile = await prisma.user.findUnique({
@@ -18,7 +47,15 @@ const getProfileFromDB = async (user: any) => {
       phoneNumber: true,
       profileImage: true,
       bio: true,
+      gender: true,
       dateOfBirth: true,
+      address: true,
+      bloodType: true,
+      allergies: true,
+      medicalConditions: true,
+      medications: true,
+      emergencyContactName: true,
+      emergencyContactPhone: true,
       role: true,
       isVerified: true,
       createdAt: true,
@@ -38,6 +75,25 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
   if (!existingUser) throw new ApiError(httpStatus.BAD_REQUEST, 'User not found');
 
   let profileImage = existingUser.profileImage;
+  const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+  const normalizedPayload =
+    parsedPayload && typeof parsedPayload === 'object' ? { ...parsedPayload } : {};
+
+  const shouldRemoveProfileImage =
+    normalizedPayload.removeProfileImage === true ||
+    normalizedPayload.removeProfileImage === 'true';
+
+  delete normalizedPayload.removeProfileImage;
+
+  if (shouldRemoveProfileImage && existingUser.profileImage && !(file && file.location)) {
+    try {
+      await deleteFile(existingUser.profileImage);
+    } catch (error) {
+      console.error('Failed to delete profile image from S3:', error);
+    }
+
+    profileImage = null;
+  }
 
   // If new file is uploaded, delete old file from S3 and use new file URL
   if (file && file.location) {
@@ -55,13 +111,21 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
     profileImage = file.location;
   }
 
-  const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+  if (Object.prototype.hasOwnProperty.call(normalizedPayload, 'gender')) {
+    const normalizedGender = normalizeGender(normalizedPayload.gender);
+
+    if (!normalizedGender) {
+      throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid gender value');
+    }
+
+    normalizedPayload.gender = normalizedGender;
+  }
 
   const updatedUser = await prisma.user.update({
     where: { id },
     data: {
       profileImage,
-      ...parsedPayload,
+      ...normalizedPayload,
     },
   });
 

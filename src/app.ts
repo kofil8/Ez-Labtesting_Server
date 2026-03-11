@@ -14,8 +14,13 @@ const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
 
 // 🧩 Global middlewares
+const defaultOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
 const corsOptions = {
-  origin: ['*'],
+  // Allow the Next.js dev server and any comma-separated origins in ALLOWED_ORIGINS
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+    : defaultOrigins,
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -31,6 +36,11 @@ app.use(
 // 🔧 Middleware setup
 app.use(cors(corsOptions));
 app.use(defaultLimiter);
+
+// ⚠️ CRITICAL: Webhook route MUST receive raw body for signature verification
+// Apply raw body parser to webhook endpoint BEFORE JSON parser
+app.use('/api/v1/payment/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(morganFormat));

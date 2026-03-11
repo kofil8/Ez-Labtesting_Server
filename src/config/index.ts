@@ -12,6 +12,8 @@ export default {
   backend_base_url: process.env.BACKEND_BASE_URL,
   super_admin_first_name: process.env.SUPER_ADMIN_FIRST_NAME as string,
   super_admin_last_name: process.env.SUPER_ADMIN_LAST_NAME as string,
+  super_admin_gender: process.env.SUPER_ADMIN_GENDER as string,
+  super_admin_role: process.env.SUPER_ADMIN_ROLE as string,
   super_admin_email: process.env.SUPER_ADMIN_EMAIL as string,
   super_admin_password: process.env.SUPER_ADMIN_PASSWORD as string,
   super_admin_phone: process.env.SUPER_ADMIN_PHONE as string,

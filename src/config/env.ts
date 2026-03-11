@@ -15,6 +15,21 @@ const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().optional().default(''),
   AWS_S3_BUCKET_NAME: z.string().optional().default(''),
 
+  // Stripe Configuration
+  STRIPE_SECRET_KEY: z.string(),
+  STRIPE_WEBHOOK_SECRET: z.string(),
+
+  // ACCESS Lab Integration
+  // Backward compatible: ACCESS_API_URL is treated as base URL.
+  ACCESS_API_URL: z.string().optional().default('https://access.labsvc.net'),
+  ACCESS_BASE_URL: z.string().optional().default('https://access.labsvc.net'),
+  ACCESS_ORDER_URL: z.string().optional().default('https://access.labsvc.net/orderAPI_landingPage.html'),
+  ACCESS_USERNAME: z.string(),
+  ACCESS_PASSWORD: z.string(),
+
+  // Google Maps API
+  GOOGLE_MAPS_API_KEY: z.string().optional().default(''),
+
   // SMTP Configuration (optional with defaults)
   SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().default(587),
@@ -27,9 +42,19 @@ const envSchema = z.object({
   // Client URL for emails and CORS
   CLIENT_URL: z.string().default('http://localhost:3000'),
 
+  // Pricing / Fees
+  PAYMENT_CURRENCY: z.string().default('usd'),
+  PROCESSING_FEE_PERCENT: z.coerce.number().default(0),
+  PROCESSING_FEE_FLAT: z.coerce.number().default(0),
+
+  // Checkout session expiry
+  CHECKOUT_SESSION_TTL_MIN: z.coerce.number().default(30),
+  CHECKOUT_SESSION_CLEANUP_CRON: z.string().default('*/10 * * * *'),
+  REQUISITION_SIGNED_URL_TTL_SECONDS: z.coerce.number().default(300),
+
   // Rate Limiting
-  FCM_RATE_LIMIT: z.coerce.number().default(10000), // per minute
-  EMAIL_RATE_LIMIT: z.coerce.number().default(100), // per minute
+  FCM_RATE_LIMIT: z.coerce.number().default(10000),
+  EMAIL_RATE_LIMIT: z.coerce.number().default(100),
 
   // Socket.IO Reconnection Window (in minutes)
   SOCKET_RECONNECTION_WINDOW: z.coerce.number().default(5),

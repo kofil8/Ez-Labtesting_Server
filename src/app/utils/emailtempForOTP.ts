@@ -1,4 +1,5 @@
 export const emailTemplate = (otp: string, text: string) => `
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -6,432 +7,293 @@ export const emailTemplate = (otp: string, text: string) => `
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Ez Lab Testing - Verification Code</title>
     <style>
-        * {
+        body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
+            background-color: #f3f7fb;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            color: #13233a;
         }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px 0;
-            min-height: 100vh;
-        }
-
-        .wrapper {
+        .email-shell {
             width: 100%;
-            max-width: 600px;
+            padding: 28px 14px;
+            background: radial-gradient(circle at top right, #dbeaff 0%, #f3f7fb 52%, #edf4ff 100%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 620px;
             margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            background: #ffffff;
+            border-radius: 20px;
             overflow: hidden;
+            border: 1px solid #dbe5f2;
+            box-shadow: 0 18px 52px rgba(14, 41, 74, 0.1);
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 40px 20px;
-            text-align: center;
-        }
-
-        .header-top {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .logo-container {
-            flex-shrink: 0;
-        }
-
-        .logo-container img {
-            width: 120px;
-            height: auto;
-            display: block;
-            max-width: 100%;
-        }
-
-        .brand-text {
-            font-size: 24px;
-            font-weight: 700;
+            background: linear-gradient(120deg, #0e3b6f 0%, #1b5ea8 60%, #2f7ecf 100%);
+            padding: 28px 24px;
             color: #ffffff;
-            text-align: left;
-            letter-spacing: -0.5px;
         }
 
-        .brand-text .main {
-            display: block;
-            font-size: 26px;
+        .brand {
+            display: table;
+            width: 100%;
         }
 
-        .brand-text .sub {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            opacity: 0.95;
-            margin-top: 2px;
+        .brand-logo,
+        .brand-copy {
+            display: table-cell;
+            vertical-align: middle;
         }
 
-        .header-title {
-            font-size: 28px;
+        .brand-logo img {
+            width: 58px;
+            height: 58px;
+            border-radius: 12px;
+            object-fit: contain;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 6px;
+        }
+
+        .brand-copy {
+            padding-left: 14px;
+        }
+
+        .brand-title {
+            margin: 0;
+            font-size: 25px;
+            line-height: 1.2;
             font-weight: 700;
-            color: #ffffff;
-            margin: 20px 0 0 0;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-subtitle {
+            margin: 4px 0 0 0;
+            font-size: 12px;
+            letter-spacing: 0.3px;
+            opacity: 0.92;
+            text-transform: uppercase;
+        }
+
+        .hero-title {
+            margin: 22px 0 0 0;
+            font-size: 30px;
+            line-height: 1.2;
+            font-weight: 700;
             letter-spacing: -0.5px;
         }
 
         .content {
-            padding: 40px 30px;
+            padding: 34px 30px 18px;
         }
 
-        .greeting {
-            font-size: 22px;
-            font-weight: 600;
-            color: #1a202c;
-            margin-bottom: 16px;
+        .title {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.25;
             text-align: center;
+            color: #10233c;
+            font-weight: 700;
         }
 
-        .description {
+        .text {
+            margin: 14px 0 0;
             font-size: 15px;
-            color: #4a5568;
-            line-height: 1.6;
-            margin-bottom: 32px;
+            line-height: 1.7;
             text-align: center;
+            color: #4b5f79;
         }
 
-        .otp-section {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 12px;
-            padding: 32px;
-            margin: 32px 0;
+        .otp-box {
+            margin: 28px 0 0;
+            border-radius: 16px;
+            padding: 26px 18px;
             text-align: center;
-            border-left: 4px solid #667eea;
+            background: linear-gradient(150deg, #f7fbff 0%, #ecf4ff 100%);
+            border: 1px solid #d5e7ff;
         }
 
         .otp-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #718096;
+            margin: 0;
+            font-size: 12px;
+            letter-spacing: 1px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 16px;
-            display: block;
+            color: #6481a6;
+            font-weight: 700;
         }
 
         .otp-code {
-            font-size: 48px;
-            font-weight: 700;
-            color: #667eea;
-            letter-spacing: 8px;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            margin: 0;
+            margin: 14px 0 12px;
+            font-size: 44px;
+            line-height: 1;
+            font-weight: 800;
+            letter-spacing: 10px;
+            color: #114683;
+            font-family: 'Courier New', Courier, monospace;
         }
 
         .otp-expiry {
+            margin: 0;
+            font-size: 13px;
+            color: #5f7898;
+        }
+
+        .security {
+            margin-top: 18px;
+            background: #fff9ef;
+            border: 1px solid #ffe0ad;
+            border-left: 4px solid #f0a020;
+            border-radius: 10px;
+            padding: 12px 14px;
             font-size: 12px;
-            color: #a0aec0;
-            margin-top: 16px;
+            line-height: 1.55;
+            color: #744c00;
+        }
+
+        .security strong {
+            display: block;
+            margin-bottom: 2px;
+            font-size: 12px;
         }
 
         .footer {
-            background-color: #f7fafc;
-            padding: 24px 30px;
+            margin-top: 28px;
+            background: #f7faff;
+            border-top: 1px solid #e2e9f3;
+            padding: 20px 26px 24px;
             text-align: center;
-            border-top: 1px solid #e2e8f0;
         }
 
-        .footer-text {
-            font-size: 13px;
-            color: #718096;
-            line-height: 1.5;
+        .footer p {
             margin: 0;
+            font-size: 13px;
+            line-height: 1.65;
+            color: #5d6f86;
         }
 
-        .footer-link {
-            color: #667eea;
+        .footer a {
+            color: #1c5faa;
             text-decoration: none;
-            font-weight: 600;
+            font-weight: 700;
         }
 
-        .footer-link:hover {
+        .footer a:hover {
             text-decoration: underline;
         }
 
-        .security-note {
-            background-color: #fef5e7;
-            border-left: 4px solid #f39c12;
-            padding: 12px 16px;
-            border-radius: 4px;
-            margin-top: 24px;
-            font-size: 12px;
-            color: #7d6608;
-            line-height: 1.5;
-        }
+        @media only screen and (max-width: 600px) {
+            .email-shell {
+                padding: 14px 8px;
+            }
 
-        .security-note strong {
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        /* Tablet Styles */
-        @media only screen and (max-width: 768px) {
-            .wrapper {
-                border-radius: 8px;
-                margin: 10px;
+            .container {
+                border-radius: 14px;
             }
 
             .header {
-                padding: 30px 20px;
+                padding: 22px 16px;
             }
 
-            .header-top {
-                gap: 15px;
-                margin-bottom: 15px;
-            }
-
-            .logo-container img {
-                width: 100px;
-            }
-
-            .brand-text {
-                font-size: 18px;
-            }
-
-            .brand-text .main {
-                font-size: 20px;
-            }
-
-            .brand-text .sub {
-                font-size: 12px;
-            }
-
-            .header-title {
+            .hero-title {
                 font-size: 24px;
+                margin-top: 18px;
             }
 
             .content {
-                padding: 30px 24px;
+                padding: 24px 16px 14px;
             }
 
-            .greeting {
-                font-size: 20px;
-                margin-bottom: 12px;
+            .title {
+                font-size: 21px;
             }
 
-            .description {
-                font-size: 14px;
-                margin-bottom: 24px;
-            }
-
-            .otp-section {
-                padding: 24px;
-                margin: 24px 0;
+            .otp-box {
+                margin-top: 22px;
+                padding: 20px 14px;
             }
 
             .otp-code {
-                font-size: 40px;
+                font-size: 35px;
                 letter-spacing: 6px;
             }
 
             .footer {
-                padding: 20px 24px;
-            }
-
-            .footer-text {
-                font-size: 12px;
+                margin-top: 22px;
+                padding: 16px 16px 20px;
             }
         }
 
-        /* Mobile Styles */
-        @media only screen and (max-width: 480px) {
-            body {
-                padding: 10px 0;
+        @media only screen and (max-width: 420px) {
+            .brand-logo,
+            .brand-copy {
+                display: block;
             }
 
-            .wrapper {
-                border-radius: 6px;
-                margin: 5px;
+            .brand-copy {
+                padding: 10px 0 0;
             }
 
-            .header {
-                padding: 20px 16px;
+            .brand-title {
+                font-size: 22px;
             }
 
-            .header-top {
-                flex-direction: column;
-                gap: 12px;
-                margin-bottom: 12px;
-            }
-
-            .logo-container img {
-                width: 80px;
-            }
-
-            .brand-text {
-                text-align: center;
-                font-size: 16px;
-            }
-
-            .brand-text .main {
-                font-size: 18px;
-            }
-
-            .brand-text .sub {
-                font-size: 11px;
-            }
-
-            .header-title {
-                font-size: 20px;
-                margin-top: 12px;
-            }
-
-            .content {
-                padding: 24px 16px;
-            }
-
-            .greeting {
-                font-size: 18px;
-                margin-bottom: 10px;
-            }
-
-            .description {
-                font-size: 13px;
-                margin-bottom: 20px;
-            }
-
-            .otp-section {
-                padding: 20px;
-                margin: 20px 0;
-                border-left-width: 3px;
-            }
-
-            .otp-label {
-                font-size: 12px;
-                margin-bottom: 12px;
+            .hero-title {
+                font-size: 22px;
             }
 
             .otp-code {
-                font-size: 36px;
+                font-size: 31px;
                 letter-spacing: 4px;
-            }
-
-            .otp-expiry {
-                font-size: 11px;
-                margin-top: 12px;
-            }
-
-            .footer {
-                padding: 16px;
-            }
-
-            .footer-text {
-                font-size: 11px;
-            }
-
-            .security-note {
-                font-size: 11px;
-                padding: 10px 12px;
-                margin-top: 16px;
-            }
-        }
-
-        /* Small Mobile Devices */
-        @media only screen and (max-width: 320px) {
-            .header {
-                padding: 14px 10px;
-            }
-
-            .header-top {
-                gap: 8px;
-            }
-
-            .logo-container img {
-                width: 70px;
-            }
-
-            .brand-text {
-                font-size: 14px;
-            }
-
-            .brand-text .main {
-                font-size: 15px;
-            }
-
-            .brand-text .sub {
-                font-size: 10px;
-            }
-
-            .header-title {
-                font-size: 16px;
-            }
-
-            .content {
-                padding: 16px 12px;
-            }
-
-            .greeting {
-                font-size: 16px;
-            }
-
-            .description {
-                font-size: 12px;
-            }
-
-            .otp-code {
-                font-size: 28px;
-                letter-spacing: 2px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <!-- Header Section -->
-        <div class="header">
-            <div class="header-top">
-                <div class="logo-container">
-                    <img src="${process.env.OTP_IMAGE_URL}" alt="Ez Lab Testing Logo" />
+    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;">
+        Your Ez Lab Testing verification code is ${otp}. It expires in 5 minutes.
+    </div>
+    <div class="email-shell">
+        <div class="container">
+            <div class="header">
+                <div class="brand">
+                    <div class="brand-logo">
+                        <img src="${process.env.OTP_IMAGE_URL}" alt="Ez Lab Testing Logo" />
+                    </div>
+                    <div class="brand-copy">
+                        <h1 class="brand-title">Ez Lab Testing</h1>
+                        <p class="brand-subtitle">Secure Verification Portal</p>
+                    </div>
                 </div>
-                <div class="brand-text">
-                    <span class="main">Ez Lab Testing</span>
-                    <span class="sub">Verification Portal</span>
+                <h2 class="hero-title">Verify Your Identity</h2>
+            </div>
+
+            <div class="content">
+                <h3 class="title">Welcome to Ez Lab Testing</h3>
+                <p class="text">${text}</p>
+
+                <div class="otp-box">
+                    <p class="otp-label">Your Verification Code</p>
+                    <p class="otp-code">${otp}</p>
+                    <p class="otp-expiry">Use this code within 5 minutes for your security.</p>
+                </div>
+
+                <div class="security">
+                    <strong>Security Notice</strong>
+                    Never share this code with anyone. Ez Lab Testing will never ask for this code by email, call, or message.
                 </div>
             </div>
-            <h1 class="header-title">Verify Your Identity</h1>
-        </div>
 
-        <!-- Main Content -->
-        <div class="content">
-            <h2 class="greeting">Welcome to Ez Lab Testing!</h2>
-            <p class="description">${text}</p>
-
-            <!-- OTP Section -->
-            <div class="otp-section">
-                <span class="otp-label">Your Verification Code</span>
-                <p class="otp-code">${otp}</p>
-                <p class="otp-expiry">This code will expire in 5 minutes</p>
+            <div class="footer">
+                <p>
+                    Need help? Contact <a href="mailto:support@ezlabtesting.com">support@ezlabtesting.com</a>
+                </p>
+                <p style="margin-top: 8px;">
+                    &copy; ${new Date().getFullYear()} Ez Lab Testing. All rights reserved.
+                </p>
             </div>
-
-            <!-- Security Note -->
-            <div class="security-note">
-                <strong>🔒 Security Notice</strong>
-                Never share this code with anyone. We will never ask for this code via email or phone.
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            <p class="footer-text">
-                Questions? Contact us at <a href="mailto:support@ezlabtesting.com" class="footer-link">support@ezlabtesting.com</a>
-            </p>
-            <p class="footer-text" style="margin-top: 12px;">
-                © 2025 Ez Lab Testing. All rights reserved.
-            </p>
         </div>
     </div>
 </body>

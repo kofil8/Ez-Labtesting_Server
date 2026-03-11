@@ -1,11 +1,11 @@
-import { NotificationPriority, NotificationType, PrismaClient } from '@prisma/client';
+import { NotificationPriority, NotificationType } from '@prisma/client';
 import { emailQueue, fcmQueue, notificationQueue } from '../../../config/queue';
 import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
 import { socketManager } from '../../helpers/socketManager';
 import logger from '../../utils/logger';
 import { renderNotificationTemplate, validateTemplateData } from '../../utils/templateRenderer';
 
-const prisma = new PrismaClient();
+import prisma from '../../../shared/prisma';
 const admin = getFirebaseAdmin();
 
 // Priority mapping for notification types

@@ -15,6 +15,8 @@ import {
 
 import { NotificationService } from './notifications.service';
 
+const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
+
 export const NotificationController = {
   /**
    * Legacy: Register FCM token
@@ -23,7 +25,7 @@ export const NotificationController = {
     const { token, platform, userId }: RegisterTokenInput = req.body;
 
     const finalUserId =
-      (req as any)?.user?.id !== undefined ? (req as any).user.id : userId ?? null;
+      (req as any)?.user?.id !== undefined ? (req as any).user.id : (userId ?? null);
 
     const result = await NotificationService.registerToken(finalUserId, token, platform ?? 'web');
 
@@ -159,7 +161,7 @@ export const NotificationController = {
    */
   deleteNotification: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
-    const { id } = req.params;
+    const id = asParamString(req.params.id);
 
     await NotificationService.deleteNotification(userId, id);
 
@@ -194,7 +196,7 @@ export const NotificationController = {
   /**
    * Get socket/connection statistics (admin)
    */
-  getConnectionStats: catchAsync(async (req: Request, res: Response) => {
+  getConnectionStats: catchAsync(async (_req: Request, res: Response) => {
     const stats = socketManager.getStats();
 
     sendResponse(res, {

@@ -16,8 +16,17 @@ type RegisterPayload = {
   lastName: string;
   email: string;
   phoneNumber: string;
+  gender: any;
   password: string;
   isVerified?: boolean;
+  dateOfBirth?: string;
+  address?: string;
+  bloodType?: string;
+  allergies?: string;
+  medicalConditions?: string;
+  medications?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 };
 
 /* -------------------------------------------------------
@@ -25,12 +34,25 @@ type RegisterPayload = {
 ------------------------------------------------------- */
 
 const registerUserToDB = async (payload: RegisterPayload) => {
-  const existingUser = await prisma.user.findUnique({
-    where: { email: payload.email },
+  // Validate phone number is provided
+  if (!payload.phoneNumber || payload.phoneNumber.trim() === '') {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Phone number is required for registration');
+  }
+
+  // Check for existing email or phone number
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [{ email: payload.email }, { phoneNumber: payload.phoneNumber }],
+    },
   });
 
   if (existingUser) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Email already in use');
+    if (existingUser.email === payload.email) {
+      throw new ApiError(httpStatus.BAD_REQUEST, 'Email already in use');
+    }
+    if (existingUser.phoneNumber === payload.phoneNumber) {
+      throw new ApiError(httpStatus.BAD_REQUEST, 'Phone number already registered');
+    }
   }
 
   const hashedPassword = await bcrypt.hash(payload.password, Number(config.salt));
@@ -43,6 +65,15 @@ const registerUserToDB = async (payload: RegisterPayload) => {
       password: hashedPassword,
       phoneNumber: payload.phoneNumber,
       isVerified: false,
+      gender: payload.gender,
+      dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined,
+      address: payload.address,
+      bloodType: payload.bloodType,
+      allergies: payload.allergies,
+      medicalConditions: payload.medicalConditions,
+      medications: payload.medications,
+      emergencyContactName: payload.emergencyContactName,
+      emergencyContactPhone: payload.emergencyContactPhone,
     },
   });
 
@@ -50,7 +81,7 @@ const registerUserToDB = async (payload: RegisterPayload) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Hash OTP
-  const hashedOtp = await bcrypt.hash(otp, 10);
+  const hashedOtp = await bcrypt.hash(otp, 8);
 
   // Save in Redis
   await redisClient.set(`otp:${newUser.email}`, hashedOtp, 'EX', 5 * 60);
@@ -63,7 +94,14 @@ const registerUserToDB = async (payload: RegisterPayload) => {
     emailTemplate(otp, 'Otp is valid for 5 minutes'),
   );
 
-  return newUser;
+  return {
+    id: newUser.id,
+    firstName: newUser.firstName,
+    lastName: newUser.lastName,
+    email: newUser.email,
+    phoneNumber: newUser.phoneNumber,
+    createdAt: newUser.createdAt,
+  };
 };
 
 // Resend OTP
@@ -95,7 +133,7 @@ const resendOTP = async (email: string) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Hash OTP before saving
-  const hashedOtp = await bcrypt.hash(otp, 10);
+  const hashedOtp = await bcrypt.hash(otp, 8);
 
   await redisClient.set(`otp:${email}`, hashedOtp, 'EX', 5 * 60);
 
@@ -142,17 +180,26 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
 
 const loginUserFromDB = async (
   payload: {
-    email: string;
+    email?: string;
+    phoneNumber?: string;
     password: string;
     pushToken?: string;
     platform?: string;
   },
   ip: string,
 ) => {
-  const { email, pushToken, platform = 'web' } = payload;
+  const { password, pushToken, platform = 'web' } = payload;
+
+  // Validate that either email or phone number is provided
+  if (!payload.email && !payload.phoneNumber) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Email or phone number is required to login');
+  }
+
+  // Determine the identifier for login attempts tracking
+  const loginIdentifier = payload.email || payload.phoneNumber!;
 
   // 1️⃣ Check if account is locked
-  const isLocked = await LoginAttemptService.isAccountLocked(email);
+  const isLocked = await LoginAttemptService.isAccountLocked(loginIdentifier);
   if (isLocked) {
     throw new ApiError(
       httpStatus.TOO_MANY_REQUESTS,
@@ -160,9 +207,14 @@ const loginUserFromDB = async (
     );
   }
 
-  // 2️⃣ Fetch user
-  const user = await prisma.user.findUnique({
-    where: { email },
+  // 2️⃣ Fetch user by email OR phone number
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        ...(payload.email ? [{ email: payload.email }] : []),
+        ...(payload.phoneNumber ? [{ phoneNumber: payload.phoneNumber }] : []),
+      ],
+    },
     select: {
       id: true,
       firstName: true,
@@ -172,15 +224,16 @@ const loginUserFromDB = async (
       role: true,
       createdAt: true,
       updatedAt: true,
+      lastLogin: true,
       password: true,
       isVerified: true,
     },
   });
 
-  // 3️⃣ Invalid email → failed attempt
+  // 3️⃣ Invalid credentials → failed attempt
   if (!user) {
-    await LoginAttemptService.recordFailedAttempt(email, ip);
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email or password');
+    await LoginAttemptService.recordFailedAttempt(loginIdentifier, ip);
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email/phone or password');
   }
 
   // 4️⃣ Check email verification
@@ -189,17 +242,47 @@ const loginUserFromDB = async (
   }
 
   // 5️⃣ Compare password
-  const isCorrectPassword = await bcrypt.compare(payload.password, user.password);
+  const isCorrectPassword = await bcrypt.compare(password, user.password);
   if (!isCorrectPassword) {
-    await LoginAttemptService.recordFailedAttempt(email, ip);
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email or password');
+    await LoginAttemptService.recordFailedAttempt(loginIdentifier, ip);
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email/phone or password');
   }
 
   // 6️⃣ Successful login → reset attempts
-  await LoginAttemptService.resetAttempts(email, ip);
+  await LoginAttemptService.resetAttempts(loginIdentifier, ip);
+
+  const isFirstLogin = !user.lastLogin;
+
+  // 6️⃣.5 Update lastLogin timestamp
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLogin: new Date() },
+  });
 
   // Remove password
-  const { password, ...userWithoutPassword } = user;
+  const { password: _, ...userWithoutPassword } = user;
+
+  // Check if MFA is enabled for this user
+  const userWithMFA = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { mfaEnabled: true },
+  });
+
+  if (userWithMFA?.mfaEnabled) {
+    // Generate temporary token for MFA verification (5 min expiry)
+    const tempToken = jwtHelpers.signToken(
+      { id: user.id, email: user.email, type: 'mfa_temp' },
+      config.jwt.jwt_secret as Secret,
+      '5m',
+    );
+
+    return {
+      mfaRequired: true,
+      tempToken,
+      user: userWithoutPassword,
+      isFirstLogin,
+    };
+  }
 
   // 7️⃣ Generate access token
   const accessToken = jwtHelpers.signToken(
@@ -227,6 +310,7 @@ const loginUserFromDB = async (
     accessToken,
     refreshToken,
     user: userWithoutPassword,
+    isFirstLogin,
   };
 };
 

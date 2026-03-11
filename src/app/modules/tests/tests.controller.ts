@@ -4,6 +4,8 @@ import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
 import { TestServices } from './tests.service';
 
+const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
+
 const getTests = catchAsync(async (req, res) => {
   const tests = await TestServices.getTestsDB(req.query);
 
@@ -16,7 +18,7 @@ const getTests = catchAsync(async (req, res) => {
 });
 
 const getTestById = catchAsync(async (req, res) => {
-  const { testId } = req.params;
+  const testId = asParamString(req.params.testId);
 
   const test = await TestServices.getTestByIdDB(testId);
 
@@ -43,7 +45,7 @@ const createTest = catchAsync(
 
 const updateTest = catchAsync(
   async (req: Request & { file?: Express.Multer.File }, res: Response) => {
-    const { testId } = req.params;
+    const testId = asParamString(req.params.testId);
     const payload = req.body;
     const file = req.file as Express.Multer.File | undefined;
 
@@ -57,7 +59,7 @@ const updateTest = catchAsync(
 );
 
 const deleteTest = catchAsync(async (req, res) => {
-  const { testId } = req.params;
+  const testId = asParamString(req.params.testId);
 
   const test = await TestServices.deleteTestFromDB(testId);
 
