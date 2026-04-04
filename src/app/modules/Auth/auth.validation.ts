@@ -31,13 +31,11 @@ const register = z.object({
     // Optional medical fields
     gender: z.nativeEnum(Gender).optional(),
     dateOfBirth: z.string().optional(),
-    address: z.string().optional(),
-    bloodType: z.string().optional(),
-    allergies: z.string().optional(),
-    medicalConditions: z.string().optional(),
-    medications: z.string().optional(),
-    emergencyContactName: z.string().optional(),
-    emergencyContactPhone: z.string().optional(),
+    addressLine1: z.string().optional(),
+    addressLine2: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zipCode: z.string().optional(),
   }),
 });
 

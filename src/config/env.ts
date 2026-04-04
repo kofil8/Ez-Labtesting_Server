@@ -23,7 +23,10 @@ const envSchema = z.object({
   // Backward compatible: ACCESS_API_URL is treated as base URL.
   ACCESS_API_URL: z.string().optional().default('https://access.labsvc.net'),
   ACCESS_BASE_URL: z.string().optional().default('https://access.labsvc.net'),
-  ACCESS_ORDER_URL: z.string().optional().default('https://access.labsvc.net/orderAPI_landingPage.html'),
+  ACCESS_ORDER_URL: z
+    .string()
+    .optional()
+    .default('https://access.labsvc.net/orderAPI_landingPage.html'),
   ACCESS_USERNAME: z.string(),
   ACCESS_PASSWORD: z.string(),
 
@@ -38,6 +41,7 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional().default(''),
   SMTP_FROM_EMAIL: z.string().email().optional().default('noreply@ezlabtesting.com'),
   SMTP_FROM_NAME: z.string().optional().default('Ez Lab Testing'),
+  OTP_IMAGE_URL: z.string().optional().default(''),
 
   // Client URL for emails and CORS
   CLIENT_URL: z.string().default('http://localhost:3000'),

@@ -9,6 +9,7 @@ import { LoginAttemptService } from '../../helpers/loginAttempts.service';
 import { emailTemplate } from '../../utils/emailtempForOTP';
 import { jwtHelpers } from '../../utils/jwtHelpers';
 import sentEmailUtility from '../../utils/sentEmailUtility';
+import { welcomeEmailTemplate } from '../../utils/welcomeEmailTemplate';
 import { NotificationService } from '../notifications/notifications.service';
 
 type RegisterPayload = {
@@ -20,13 +21,18 @@ type RegisterPayload = {
   password: string;
   isVerified?: boolean;
   dateOfBirth?: string;
-  address?: string;
-  bloodType?: string;
-  allergies?: string;
-  medicalConditions?: string;
-  medications?: string;
-  emergencyContactName?: string;
-  emergencyContactPhone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+};
+
+const queueOtpEmail = (email: string, subject: string, text: string, html: string) => {
+  void sentEmailUtility(email, subject, text, html).catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error('Failed to send OTP email:', error);
+  });
 };
 
 /* -------------------------------------------------------
@@ -55,7 +61,12 @@ const registerUserToDB = async (payload: RegisterPayload) => {
     }
   }
 
-  const hashedPassword = await bcrypt.hash(payload.password, Number(config.salt));
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  const [hashedPassword, hashedOtp] = await Promise.all([
+    bcrypt.hash(payload.password, Number(config.salt)),
+    bcrypt.hash(otp, 8),
+  ]);
 
   const newUser = await prisma.user.create({
     data: {
@@ -67,27 +78,19 @@ const registerUserToDB = async (payload: RegisterPayload) => {
       isVerified: false,
       gender: payload.gender,
       dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined,
-      address: payload.address,
-      bloodType: payload.bloodType,
-      allergies: payload.allergies,
-      medicalConditions: payload.medicalConditions,
-      medications: payload.medications,
-      emergencyContactName: payload.emergencyContactName,
-      emergencyContactPhone: payload.emergencyContactPhone,
+      addressLine1: payload.addressLine1,
+      addressLine2: payload.addressLine2,
+      city: payload.city,
+      state: payload.state,
+      zipCode: payload.zipCode,
     },
   });
-
-  // Generate OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Hash OTP
-  const hashedOtp = await bcrypt.hash(otp, 8);
 
   // Save in Redis
   await redisClient.set(`otp:${newUser.email}`, hashedOtp, 'EX', 5 * 60);
 
-  // Send email
-  await sentEmailUtility(
+  // Send email without blocking the response path
+  queueOtpEmail(
     newUser.email,
     'Please Verify your email',
     `Your OTP is: ${otp}`,
@@ -129,16 +132,13 @@ const resendOTP = async (email: string) => {
 
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  // Generate new OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // Hash OTP before saving
   const hashedOtp = await bcrypt.hash(otp, 8);
 
   await redisClient.set(`otp:${email}`, hashedOtp, 'EX', 5 * 60);
 
-  // Send email
-  await sentEmailUtility(
+  queueOtpEmail(
     email,
     'Your new OTP',
     `Your new verification code is: ${otp}`,
@@ -163,10 +163,22 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
   }
 
   // Mark user verified
-  await prisma.user.update({
+  const verifiedUser = await prisma.user.update({
     where: { email },
     data: { isVerified: true },
+    select: {
+      email: true,
+      firstName: true,
+    },
   });
+
+  // Send a welcome email without blocking the response path
+  queueOtpEmail(
+    verifiedUser.email,
+    'Email verified successfully - Welcome!',
+    'Your email has been verified successfully. Welcome to our platform!',
+    welcomeEmailTemplate(verifiedUser.firstName ?? undefined),
+  );
 
   // Remove OTP after success
   await redisClient.del(`otp:${email}`);
@@ -389,18 +401,15 @@ const forgotPassword = async (email: string) => {
 
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  // Generate OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // Hash OTP
   const hashedOtp = await bcrypt.hash(otp, 10);
 
   // Save in Redis (different key from registration to avoid conflict, or same if flow allows)
   // Using specific key for password reset to be safe
   await redisClient.set(`otp_reset:${email}`, hashedOtp, 'EX', 5 * 60);
 
-  // Send email
-  await sentEmailUtility(
+  queueOtpEmail(
     email,
     'Reset your password',
     `Your password reset code is: ${otp}`,

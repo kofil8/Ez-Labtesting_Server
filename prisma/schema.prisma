@@ -8,45 +8,451 @@ datasource db {
 }
 
 model User {
-  id                    String            @id @default(uuid())
-  email                 String            @unique
-  password              String
-  phoneNumber           String            @db.VarChar(20)
-  profileImage          String?
-  bio                   String?           @db.VarChar(500)
-  firstName             String?           @db.VarChar(100)
-  lastName              String?           @db.VarChar(100)
-  dateOfBirth           DateTime?
-  address               String?           @db.VarChar(255)
-  bloodType             String?           @db.VarChar(10)
-  allergies             String?           @db.VarChar(500)
-  medicalConditions     String?           @db.VarChar(500)
-  medications           String?           @db.VarChar(500)
-  emergencyContactName  String?           @db.VarChar(100)
-  emergencyContactPhone String?           @db.VarChar(20)
-  isVerified            Boolean           @default(false)
-  role                  Role              @default(CUSTOMER)
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  lastAction            DateTime?
-  lastLogin             DateTime?
-  status                UserStatus        @default(ACTIVE)
-  mfaBackupCodes        String[]          @default([])
-  mfaEnabled            Boolean           @default(false)
-  mfaSecret             String?
-  mfaSetupAt            DateTime?
-  gender                Gender?
-  checkoutSessions      CheckoutSession[]
-  notifications         Notification[]
-  orders                Order[]
-  pushTokens            PushToken[]
-  reviewHelpfulMarks    ReviewHelpful[]
-  sentSupportMessages   SupportMessage[]  @relation("SupportMessageSender")
-  supportTickets        SupportTicket[]
-  reviews               TestReview[]
-  userConnection        UserConnection?
+  id             String     @id @default(uuid())
+  email          String     @unique
+  password       String
+  phoneNumber    String     @db.VarChar(20)
+  profileImage   String?
+  bio            String?    @db.VarChar(500)
+  firstName      String     @db.VarChar(100)
+  lastName       String     @db.VarChar(100)
+  dateOfBirth    DateTime?
+  addressLine1   String?    @db.VarChar(255)
+  addressLine2   String?    @db.VarChar(255)
+  city           String?    @db.VarChar(100)
+  state          String?    @db.Char(2)
+  zipCode        String?    @db.VarChar(10)
+  isVerified     Boolean    @default(false)
+  role           Role       @default(CUSTOMER)
+  laboratoryId   BigInt?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  lastAction     DateTime?
+  lastLogin      DateTime?
+  status         UserStatus @default(ACTIVE)
+  mfaBackupCodes String[]   @default([])
+  mfaEnabled     Boolean    @default(false)
+  mfaSecret      String?
+  mfaSetupAt     DateTime?
+  gender         Gender?
+
+  laboratory          Laboratory?      @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+  notifications       Notification[]
+  orders              Order[]
+  pushTokens          PushToken[]
+  reviewHelpfulMarks  ReviewHelpful[]
+  reviews             TestReview[]
+  sentSupportMessages SupportMessage[] @relation("SupportMessageSender")
+  supportTickets      SupportTicket[]
+  cartItems           CartItem[]
 
   @@index([email])
+  @@index([role])
+  @@index([laboratoryId])
+}
+
+model TestCategory {
+  id          BigInt  @id
+  name        String  @db.VarChar(100)
+  slug        String  @unique @db.VarChar(120)
+  description String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  tests Test[]
+
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
+model Test {
+  id               BigInt   @id
+  name             String   @db.VarChar(255)
+  slug             String   @unique @db.VarChar(280)
+  description      String?
+  shortDescription String?  @db.VarChar(500)
+  categoryId       BigInt
+  specimenType     String?  @db.VarChar(100)
+  turnaroundDays   Int?     @db.SmallInt
+  isPanel          Boolean  @default(false)
+  cptCode          String?  @db.VarChar(20)
+  isActive         Boolean  @default(true)
+  isPopular        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category          TestCategory       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  reviews           TestReview[]
+  labTests          LabTest[]
+  stateRestrictions StateRestriction[]
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+
+  panelComponents   TestComponent[] @relation("PanelComponents")
+  componentOfPanels TestComponent[] @relation("ComponentOfPanels")
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([isPopular])
+  @@index([cptCode])
+  @@index([categoryId, isActive])
+  @@index([slug])
+}
+
+model TestComponent {
+  id              BigInt @id @default(autoincrement())
+  panelId         BigInt
+  componentTestId BigInt
+
+  panel         Test @relation("PanelComponents", fields: [panelId], references: [id], onDelete: Cascade)
+  componentTest Test @relation("ComponentOfPanels", fields: [componentTestId], references: [id], onDelete: Cascade)
+
+  @@unique([panelId, componentTestId])
+  @@index([componentTestId])
+}
+
+model Laboratory {
+  id              BigInt   @id
+  name            String   @db.VarChar(255)
+  code            String   @unique @db.VarChar(20)
+  apiEndpoint     String?  @db.VarChar(500)
+  apiKeyEncrypted String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  users        User[]
+  labTests     LabTest[]
+  drawCenters  DrawCenter[]
+  cartItems    CartItem[]
+  orders       Order[]
+  requisitions Requisition[]
+
+  @@index([isActive])
+}
+
+model LabTest {
+  id                     BigInt  @id @default(autoincrement())
+  testId                 BigInt
+  laboratoryId           BigInt
+  labTestCode            String  @db.VarChar(50)
+  labCost                Decimal @default(0.00) @db.Decimal(10, 2)
+  retailPrice            Decimal @default(0.00) @db.Decimal(10, 2)
+  isAvailable            Boolean @default(true)
+  turnaroundDaysOverride Int?    @db.SmallInt
+
+  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+
+  @@unique([testId, laboratoryId])
+  @@index([laboratoryId])
+  @@index([isAvailable])
+  @@index([labTestCode])
+}
+
+model StateRestriction {
+  id              BigInt          @id @default(autoincrement())
+  stateCode       String          @db.Char(2)
+  testId          BigInt?
+  restrictionType RestrictionType
+  notes           String?
+  isActive        Boolean         @default(true)
+
+  test Test? @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([stateCode])
+  @@index([testId])
+  @@index([stateCode, isActive])
+}
+
+model DrawCenter {
+  id           BigInt   @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  laboratoryId BigInt?
+  addressLine1 String   @db.VarChar(255)
+  addressLine2 String?  @db.VarChar(255)
+  city         String   @db.VarChar(100)
+  state        String   @db.Char(2)
+  zipCode      String   @db.VarChar(10)
+  latitude     Decimal? @db.Decimal(10, 7)
+  longitude    Decimal? @db.Decimal(10, 7)
+  phone        String?  @db.VarChar(20)
+  hours        String?
+  isActive     Boolean  @default(true)
+
+  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+  orders     Order[]
+
+  @@index([laboratoryId])
+  @@index([state])
+  @@index([zipCode])
+  @@index([isActive])
+  @@index([latitude, longitude])
+}
+
+model CartItem {
+  id           BigInt   @id @default(autoincrement())
+  userId       String
+  testId       BigInt
+  laboratoryId BigInt
+  price        Decimal  @default(0.00) @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, testId, laboratoryId])
+  @@index([userId])
+  @@index([testId])
+  @@index([laboratoryId])
+}
+
+model Order {
+  id           String  @id @default(uuid())
+  userId       String?
+  laboratoryId BigInt
+  drawCenterId BigInt?
+  orderNumber  String  @unique @db.VarChar(30)
+
+  subtotal      Decimal @default(0.00) @db.Decimal(10, 2)
+  tax           Decimal @default(0.00) @db.Decimal(10, 2)
+  processingFee Decimal @default(0.00) @db.Decimal(10, 2)
+  discount      Decimal @default(0.00) @db.Decimal(10, 2)
+  total         Decimal @default(0.00) @db.Decimal(10, 2)
+
+  paymentStatus     PaymentStatus      @default(pending)
+  paymentMethodType PaymentMethodType?
+  orderStatus       OrderStatus        @default(pending)
+
+  stripePaymentIntentId String? @unique
+  stripeChargeId        String? @unique
+  stripePaymentMethodId String?
+
+  accessSubmissionStatus AccessSubmissionStatus @default(NOT_SUBMITTED)
+  accessOrderId          String?                @unique
+  accessClientId         String?
+  requisitionPdfUrl      String?
+  requisitionPdfPath     String?
+  labVisitInstructions   String?
+  manualReviewRequired   Boolean                @default(false)
+  accessPayloadJson      Json?
+  accessResponseJson     Json?
+  accessErrorMessage     String?
+
+  paidAt           DateTime?
+  submittedToLabAt DateTime?
+  labOrderPlacedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  currentTrackingStep Int       @default(1)
+  trackingUpdatedAt   DateTime?
+  notificationsSent   String[]  @default([])
+  lastNotificationAt  DateTime?
+
+  user           User?                @relation(fields: [userId], references: [id])
+  laboratory     Laboratory           @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  drawCenter     DrawCenter?          @relation(fields: [drawCenterId], references: [id], onDelete: SetNull)
+  patient        OrderPatient?
+  orderItems     OrderItem[]
+  requisitions   Requisition[]
+  promoCodes     OrderPromoCode[]
+  supportTickets SupportTicket[]
+  trackingEvents OrderTrackingEvent[]
+
+  @@index([userId])
+  @@index([laboratoryId])
+  @@index([drawCenterId])
+  @@index([paymentStatus])
+  @@index([paymentMethodType])
+  @@index([orderStatus])
+  @@index([accessSubmissionStatus])
+  @@index([paidAt])
+  @@index([createdAt])
+}
+
+model OrderPatient {
+  id             String          @id @default(uuid())
+  orderId        String          @unique
+  relationToUser PatientRelation @default(SELF)
+  firstName      String          @db.VarChar(100)
+  lastName       String          @db.VarChar(100)
+  dateOfBirth    DateTime?
+  gender         Gender?
+  phoneNumber    String?         @db.VarChar(20)
+  email          String?         @db.VarChar(255)
+  addressLine1   String?         @db.VarChar(255)
+  addressLine2   String?         @db.VarChar(255)
+  city           String?         @db.VarChar(100)
+  state          String?         @db.Char(2)
+  zipCode        String?         @db.VarChar(10)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model OrderItem {
+  id          BigInt  @id @default(autoincrement())
+  orderId     String
+  testId      BigInt
+  labTestCode String  @db.VarChar(50)
+  price       Decimal @default(0.00) @db.Decimal(10, 2)
+  labCost     Decimal @default(0.00) @db.Decimal(10, 2)
+
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  test         Test          @relation(fields: [testId], references: [id], onDelete: Restrict)
+  requisitions Requisition[]
+
+  @@index([orderId])
+  @@index([testId])
+}
+
+model Requisition {
+  id                 BigInt            @id @default(autoincrement())
+  orderId            String
+  orderItemId        BigInt?
+  laboratoryId       BigInt?
+  requisitionNumber  String?           @db.VarChar(50)
+  requisitionPdfPath String?           @db.VarChar(500)
+  status             RequisitionStatus @default(generated)
+  labOrderId         String?           @db.VarChar(100)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem  OrderItem?  @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([laboratoryId])
+  @@index([status])
+  @@index([labOrderId])
+  @@index([requisitionNumber])
+}
+
+model PromoCode {
+  id            BigInt       @id @default(autoincrement())
+  code          String       @unique @db.VarChar(50)
+  discountType  DiscountType
+  discountValue Decimal      @default(0.00) @db.Decimal(10, 2)
+  minOrder      Decimal?     @db.Decimal(10, 2)
+  maxUses       Int?
+  usedCount     Int          @default(0)
+  startsAt      DateTime?
+  expiresAt     DateTime?
+  isActive      Boolean      @default(true)
+
+  orderPromoCodes OrderPromoCode[]
+
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+model OrderPromoCode {
+  id             BigInt  @id @default(autoincrement())
+  orderId        String
+  promoCodeId    BigInt
+  discountAmount Decimal @default(0.00) @db.Decimal(10, 2)
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([promoCodeId])
+}
+
+model TestReview {
+  id                 String   @id @default(uuid())
+  testId             BigInt
+  userId             String
+  rating             Int      @db.SmallInt
+  title              String   @db.VarChar(200)
+  comment            String   @db.VarChar(1000)
+  isVerifiedPurchase Boolean  @default(false)
+  helpfulCount       Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  helpfulMarks ReviewHelpful[]
+  test         Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, userId])
+  @@index([testId])
+  @@index([userId])
+  @@index([rating])
+  @@index([createdAt])
+}
+
+model ReviewHelpful {
+  id        String   @id @default(uuid())
+  reviewId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  review TestReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+  @@index([userId])
+}
+
+model OrderTrackingEvent {
+  id        String   @id @default(uuid())
+  orderId   String
+  step      Int
+  status    String   @db.VarChar(50)
+  message   String?  @db.VarChar(500)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([step, status])
+}
+
+model SupportTicket {
+  id             String    @id @default(uuid())
+  ticketNumber   String    @unique @db.VarChar(30)
+  userId         String
+  orderId        String?
+  subject        String    @db.VarChar(200)
+  category       String    @default("general") @db.VarChar(50)
+  priority       String    @default("medium") @db.VarChar(20)
+  status         String    @default("open") @db.VarChar(20)
+  responseTarget DateTime
+  respondedAt    DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  messages SupportMessage[]
+  order    Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([priority, status])
+  @@index([createdAt])
+  @@index([orderId])
+}
+
+model SupportMessage {
+  id         String   @id @default(uuid())
+  ticketId   String
+  senderId   String
+  senderType String   @db.VarChar(20)
+  message    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  sender User          @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([senderId])
 }
 
 model PushToken {
@@ -57,7 +463,10 @@ model PushToken {
   revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Notification {
@@ -74,21 +483,13 @@ model Notification {
   sentAt       DateTime             @default(now())
   expiresAt    DateTime
   createdAt    DateTime             @default(now())
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead, createdAt])
   @@index([expiresAt])
   @@index([priority, createdAt])
   @@index([sentAt])
-}
-
-model UserConnection {
-  id                 String    @id @default(uuid())
-  userId             String    @unique
-  lastConnectedAt    DateTime  @default(now())
-  lastDisconnectedAt DateTime?
-  updatedAt          DateTime  @updatedAt
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model NotificationTemplate {
@@ -106,95 +507,6 @@ model NotificationTemplate {
   updatedAt    DateTime         @updatedAt
 
   @@index([type])
-}
-
-model Category {
-  id        String   @id @default(uuid())
-  name      String   @unique @db.VarChar(100)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tests     Test[]
-
-  @@index([name])
-}
-
-model Test {
-  id           String       @id @default(uuid())
-  testCode     String       @db.VarChar(100)
-  testName     String       @db.VarChar(200)
-  price        Float
-  testImage    String       @db.VarChar(500)
-  description  String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  categoryId   String
-  isActive     Boolean      @default(true)
-  isPublished  Boolean      @default(false)
-  specimenType String       @db.VarChar(200)
-  turnaround   Int
-  orders       Order[]
-  orderItems   OrderItem[]
-  panels       PanelTest[]
-  category     Category     @relation(fields: [categoryId], references: [id])
-  testDetails  TestDetail[]
-  reviews      TestReview[]
-
-  @@index([categoryId])
-  @@index([isPublished, isActive])
-}
-
-model TestDetail {
-  id               String   @id @default(uuid())
-  testId           String
-  turnaround       Int?
-  component        String   @db.VarChar(200)
-  method           String   @db.VarChar(200)
-  collectionNotes  String?
-  clinicalUtility  String?
-  cptCode          String   @db.VarChar(100)
-  testingLocatiion String   @db.VarChar(200)
-  temperatures     Json     @default("[]")
-  preparation      String?
-  collectionMethod String?
-  resultsDelivery  String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  test             Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
-
-  @@index([testId])
-}
-
-model TestPanel {
-  id              String      @id @default(uuid())
-  name            String      @db.VarChar(200)
-  description     String?
-  discountPercent Float       @default(0)
-  isActive        Boolean     @default(true)
-  startsAt        DateTime?
-  endsAt          DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  basePrice       Float
-  panelImage      String?     @db.VarChar(500)
-  orderItems      OrderItem[]
-  tests           PanelTest[]
-
-  @@index([isActive, startsAt, endsAt])
-}
-
-model PanelTest {
-  id         String    @id @default(uuid())
-  panelId    String
-  testId     String
-  sortOrder  Int       @default(0)
-  isRequired Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  panel      TestPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
-  test       Test      @relation(fields: [testId], references: [id], onDelete: Cascade)
-
-  @@unique([panelId, testId])
-  @@index([testId])
 }
 
 model AuditLog {
@@ -217,235 +529,6 @@ model AuditLog {
   @@index([resource])
   @@index([action])
   @@index([createdAt])
-}
-
-model WebhookEvent {
-  id              String    @id @default(uuid())
-  provider        String    @db.VarChar(30)
-  externalEventId String    @db.VarChar(120)
-  eventType       String    @db.VarChar(120)
-  status          String    @default("PROCESSING") @db.VarChar(20)
-  attemptCount    Int       @default(1)
-  lastError       String?
-  processedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@unique([provider, externalEventId])
-  @@index([status, createdAt])
-}
-
-model TestReview {
-  id                 String          @id @default(uuid())
-  testId             String
-  userId             String
-  rating             Int             @db.SmallInt
-  title              String          @db.VarChar(200)
-  comment            String          @db.VarChar(1000)
-  isVerifiedPurchase Boolean         @default(false)
-  helpfulCount       Int             @default(0)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  helpfulMarks       ReviewHelpful[]
-  test               Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
-  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([testId, userId])
-  @@index([testId])
-  @@index([userId])
-  @@index([rating])
-  @@index([createdAt])
-}
-
-model ReviewHelpful {
-  id        String     @id @default(uuid())
-  reviewId  String
-  userId    String
-  createdAt DateTime   @default(now())
-  review    TestReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([reviewId, userId])
-  @@index([reviewId])
-  @@index([userId])
-}
-
-model Order {
-  id                    String               @id @default(uuid())
-  userId                String?
-  labTestId             String?
-  labCenterId           String?
-  status                OrderStatus          @default(PENDING_PAYMENT)
-  subtotal              Float
-  processingFee         Float
-  total                 Float
-  stripePaymentIntentId String?              @unique
-  accessOrderId         String?              @unique
-  requisitionPdfUrl     String?
-  labVisitInstructions  String?
-  accessPayloadJson     Json
-  accessCsv             String?
-  paidAt                DateTime?
-  labOrderPlacedAt      DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  manualReviewRequired  Boolean              @default(false)
-  currentTrackingStep   Int                  @default(1)
-  lastNotificationAt    DateTime?
-  notificationsSent     String[]             @default([])
-  trackingUpdatedAt     DateTime?
-  checkoutSession       CheckoutSession[]
-  labCenter             LabCenter?           @relation(fields: [labCenterId], references: [id])
-  test                  Test?                @relation(fields: [labTestId], references: [id])
-  user                  User?                @relation(fields: [userId], references: [id])
-  items                 OrderItem[]
-  trackingEvents        OrderTrackingEvent[]
-  supportTickets        SupportTicket[]
-
-  @@index([userId])
-  @@index([labTestId])
-  @@index([labCenterId])
-  @@index([status])
-  @@index([paidAt])
-  @@index([createdAt])
-}
-
-model OrderItem {
-  id        String        @id @default(uuid())
-  orderId   String
-  type      OrderItemType
-  testId    String?
-  panelId   String?
-  quantity  Int           @default(1)
-  unitPrice Float
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  panel     TestPanel?    @relation(fields: [panelId], references: [id])
-  test      Test?         @relation(fields: [testId], references: [id])
-
-  @@index([orderId])
-  @@index([type])
-}
-
-model CheckoutSession {
-  id                   String         @id @default(uuid())
-  userId               String
-  status               CheckoutStatus @default(DRAFT)
-  patientJson          Json
-  itemsJson            Json
-  subtotal             Float
-  processingFee        Float
-  total                Float
-  currency             String         @default("usd")
-  orderId              String?
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
-  expiresAt            DateTime
-  submitIdempotencyKey String?        @db.VarChar(100)
-  order                Order?         @relation(fields: [orderId], references: [id])
-  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, status])
-  @@index([expiresAt])
-}
-
-model SupportTicket {
-  id             String           @id @default(uuid())
-  ticketNumber   String           @unique @db.VarChar(30)
-  userId         String
-  orderId        String?
-  subject        String           @db.VarChar(200)
-  category       String           @default("general") @db.VarChar(50)
-  priority       String           @default("medium") @db.VarChar(20)
-  status         String           @default("open") @db.VarChar(20)
-  responseTarget DateTime
-  respondedAt    DateTime?
-  resolvedAt     DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  messages       SupportMessage[]
-  order          Order?           @relation(fields: [orderId], references: [id])
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, status])
-  @@index([priority, status])
-  @@index([createdAt])
-  @@index([orderId])
-}
-
-model SupportMessage {
-  id         String        @id @default(uuid())
-  ticketId   String
-  senderId   String
-  senderType String        @db.VarChar(20)
-  message    String
-  createdAt  DateTime      @default(now())
-  sender     User          @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  @@index([ticketId, createdAt])
-  @@index([senderId])
-}
-
-model OrderTrackingEvent {
-  id        String   @id @default(uuid())
-  orderId   String
-  step      Int
-  status    String   @db.VarChar(50)
-  message   String?  @db.VarChar(500)
-  metadata  Json?
-  createdAt DateTime @default(now())
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([orderId, createdAt])
-  @@index([step, status])
-}
-
-model LabCenter {
-  id           String   @id @default(uuid())
-  name         String   @db.VarChar(200)
-  address      String   @db.VarChar(500)
-  phone        String?  @db.VarChar(20)
-  email        String?  @db.VarChar(200)
-  website      String?  @db.VarChar(500)
-  type         String   @db.VarChar(100)
-  hours        String?  @db.VarChar(500)
-  status       String   @default("Open") @db.VarChar(50)
-  latitude     Float
-  longitude    Float
-  rating       Float    @default(0)
-  reviewCount  Int      @default(0)
-  isActive     Boolean  @default(true)
-  lastVerified DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  orders       Order[]
-
-  @@index([latitude, longitude])
-  @@index([isActive])
-  @@index([type])
-  @@index([lastVerified])
-}
-
-enum OrderItemType {
-  TEST
-  PANEL
-}
-
-enum CheckoutStatus {
-  DRAFT
-  SUBMITTED
-  EXPIRED
-}
-
-enum OrderStatus {
-  PENDING_PAYMENT
-  PAYMENT_PROCESSING
-  PAID
-  LAB_ORDER_PLACED
-  COMPLETED
-  FAILED
 }
 
 enum Role {
@@ -494,4 +577,58 @@ enum NotificationPriority {
   HIGH
   MEDIUM
   LOW
+}
+
+enum RestrictionType {
+  blocked
+  requires_physician
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum PaymentMethodType {
+  CARD
+  ACH
+}
+
+enum OrderStatus {
+  pending
+  processing
+  requisition_sent
+  completed
+  cancelled
+}
+
+enum AccessSubmissionStatus {
+  NOT_SUBMITTED
+  PENDING
+  SUBMITTED
+  FAILED
+  CANCELLED
+}
+
+enum RequisitionStatus {
+  generated
+  sent_to_lab
+  specimen_collected
+  processing
+  results_ready
+}
+
+enum DiscountType {
+  percent
+  fixed
+}
+
+enum PatientRelation {
+  SELF
+  SPOUSE
+  CHILD
+  PARENT
+  OTHER
 }
