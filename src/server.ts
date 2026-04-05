@@ -15,6 +15,7 @@ import { initializeBullBoard } from './config/bullBoard';
 import { connectDatabases, disconnectDatabases } from './config/db';
 import { closeQueues, initializeQueues } from './config/queue';
 import { closeSocketIO, initializeSocketIO } from './config/socket';
+import { getFirebaseAdmin } from './lib/firebaseAdmin';
 
 // Initialize BullMQ workers
 import './app/workers';
@@ -29,6 +30,14 @@ async function startServer() {
     // Connect databases
     await connectDatabases();
     console.log('📦 Databases connected');
+
+    try {
+      getFirebaseAdmin();
+      console.log('🔥 Firebase Admin initialized');
+    } catch (error) {
+      console.error('❌ Firebase Admin initialization failed:', error);
+      throw error;
+    }
 
     // Seed super admin and notification templates
     await seedSuperAdmin();
@@ -83,22 +92,15 @@ async function startServer() {
 async function gracefulShutdown(signal: string) {
   console.log(`\n🛑 Received ${signal} — stopping server...`);
 
-  // Stop notification cleanup job
   stopNotificationCleanup();
-
-  // Close Socket.IO connections
   await closeSocketIO();
 
-  // Close HTTP server
   if (server) {
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     console.log('🛑 HTTP server stopped');
   }
 
-  // Close queues
   await closeQueues();
-
-  // Disconnect databases
   await disconnectDatabases();
 
   console.log('✅ Graceful shutdown complete');

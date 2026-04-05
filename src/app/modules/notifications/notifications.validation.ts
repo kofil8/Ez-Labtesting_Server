@@ -23,10 +23,6 @@ export const registerTokenSchema = z.object({
     .refine((v) => !v || ['web', 'ios', 'android'].includes(v), {
       message: "platform must be one of 'web', 'ios', 'android'",
     }),
-  userId: z
-    .union([z.string().regex(/^\d+$/), z.number()])
-    .optional()
-    .transform((val) => (typeof val === 'string' ? parseInt(val, 10) : val)),
 });
 
 export const unregisterTokenSchema = z.object({

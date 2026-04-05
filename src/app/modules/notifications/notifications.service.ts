@@ -1,12 +1,13 @@
 import { NotificationPriority, NotificationType } from '@prisma/client';
 import { emailQueue, fcmQueue, notificationQueue } from '../../../config/queue';
 import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
+import prisma from '../../../shared/prisma';
 import { socketManager } from '../../helpers/socketManager';
 import logger from '../../utils/logger';
 import { renderNotificationTemplate, validateTemplateData } from '../../utils/templateRenderer';
 
-import prisma from '../../../shared/prisma';
 const admin = getFirebaseAdmin();
+const appUrl = process.env.CLIENT_URL || 'http://localhost:3000';
 
 // Priority mapping for notification types
 const priorityMapping: Record<NotificationType, NotificationPriority> = {
@@ -43,9 +44,6 @@ const emailCriticalTypes: NotificationType[] = [
   'PASSWORD_RESET',
 ];
 
-/**
- * Typed notification data interfaces
- */
 export interface OrderNotification {
   orderId: string;
   userName: string;
@@ -69,20 +67,30 @@ export const NotificationService = {
   /* -------------------------------------------------------
      REGISTER TOKEN
   ------------------------------------------------------- */
-  async registerToken(userId: string | null, token: string, platform = 'web') {
+  async registerToken(userId: string, token: string, platform = 'web') {
     return prisma.pushToken.upsert({
       where: { token },
-      update: { userId, platform, revoked: false },
-      create: { userId, token, platform },
+      update: {
+        userId,
+        platform,
+        revoked: false,
+      },
+      create: {
+        userId,
+        token,
+        platform,
+        revoked: false,
+      },
     });
   },
 
   /* -------------------------------------------------------
      UNREGISTER TOKEN
   ------------------------------------------------------- */
-  async unregisterToken(token: string) {
-    return prisma.pushToken.deleteMany({
-      where: { token },
+  async unregisterToken(userId: string, token: string) {
+    return prisma.pushToken.updateMany({
+      where: { userId, token },
+      data: { revoked: true },
     });
   },
 
@@ -101,7 +109,7 @@ export const NotificationService = {
           icon: '/logo.png',
         },
         fcmOptions: {
-          link: 'https://localhost:3000/',
+          link: `${appUrl}/account/notifications`,
         },
       },
     };
@@ -110,19 +118,20 @@ export const NotificationService = {
       const response = await admin.messaging().send(message);
       return { success: true, response };
     } catch (error: any) {
-      const code = error.code;
+      const code = error?.code;
 
       if (
         code === 'messaging/registration-token-not-registered' ||
         code === 'messaging/invalid-registration-token'
       ) {
-        await prisma.pushToken.deleteMany({
+        await prisma.pushToken.updateMany({
           where: { token },
+          data: { revoked: true },
         });
       }
 
       logger.error('sendToToken FCM Error:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error?.message || 'Failed to send notification' };
     }
   },
 
@@ -151,7 +160,7 @@ export const NotificationService = {
           icon: '/logo.png',
         },
         fcmOptions: {
-          link: 'https://localhost:3000/',
+          link: `${appUrl}/account/notifications`,
         },
       },
     };
@@ -175,8 +184,9 @@ export const NotificationService = {
     });
 
     if (invalidTokens.length) {
-      await prisma.pushToken.deleteMany({
+      await prisma.pushToken.updateMany({
         where: { token: { in: invalidTokens } },
+        data: { revoked: true },
       });
     }
 
@@ -207,12 +217,11 @@ export const NotificationService = {
         throw new Error('User not found');
       }
 
-      // Calculate expiry date based on user role
       const expiryDate = new Date();
       if (user.role === 'CUSTOMER') {
-        expiryDate.setDate(expiryDate.getDate() + 90); // 90 days for customers
+        expiryDate.setDate(expiryDate.getDate() + 90);
       } else {
-        expiryDate.setDate(expiryDate.getDate() + 365); // 365 days for others
+        expiryDate.setDate(expiryDate.getDate() + 365);
       }
 
       const priority = priorityMapping[type] || 'MEDIUM';
@@ -245,7 +254,6 @@ export const NotificationService = {
     templateData: Record<string, any> = {},
   ) {
     try {
-      // Get user
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { email: true, role: true },
@@ -255,7 +263,6 @@ export const NotificationService = {
         throw new Error('User not found');
       }
 
-      // Get notification template
       const template = await prisma.notificationTemplate.findUnique({
         where: { type },
       });
@@ -264,7 +271,6 @@ export const NotificationService = {
         throw new Error(`Notification template not found or inactive: ${type}`);
       }
 
-      // Validate template data
       let templateVars: any[] = [];
       if (Array.isArray(template.variables)) {
         templateVars = template.variables;
@@ -274,9 +280,8 @@ export const NotificationService = {
         } catch {
           templateVars = [];
         }
-      } else {
-        templateVars = [];
       }
+
       const validation = validateTemplateData(templateData, templateVars);
       if (!validation.valid) {
         logger.warn(
@@ -284,10 +289,8 @@ export const NotificationService = {
         );
       }
 
-      // Render template
       const rendered = renderNotificationTemplate(template, templateData);
 
-      // Create notification record
       const notification = await this.createNotification(
         userId,
         type,
@@ -298,12 +301,9 @@ export const NotificationService = {
 
       const priority = priorityMapping[type] || 'MEDIUM';
       const isCritical = emailCriticalTypes.includes(type);
-
-      // Check if user is online
       const isOnline = socketManager.isUserOnline(userId);
 
       if (isOnline) {
-        // Emit real-time notification via WebSocket
         socketManager.emitToUser(userId, 'notification:new', {
           id: notification.id,
           type,
@@ -313,7 +313,11 @@ export const NotificationService = {
           priority,
         });
 
-        // Update delivery via
+        const unreadCount = await this.getUnreadCount(userId);
+        socketManager.emitToUser(userId, 'notification:count-update', {
+          unreadCount,
+        });
+
         await prisma.notification.update({
           where: { id: notification.id },
           data: {
@@ -322,7 +326,6 @@ export const NotificationService = {
         });
       }
 
-      // Send FCM notification if user is offline
       if (!isOnline) {
         const tokens = await prisma.pushToken.findMany({
           where: { userId, revoked: false },
@@ -339,7 +342,7 @@ export const NotificationService = {
               data: templateData,
             };
             const jobOptions = {
-              priority: priority === 'HIGH' ? 1 : priority === 'LOW' ? 3 : 2, // Bull: 1=high, 2=normal, 3=low
+              priority: priority === 'HIGH' ? 1 : priority === 'LOW' ? 3 : 2,
               attempts: 3,
             };
             await fcmQueue.add(jobData, jobOptions);
@@ -347,7 +350,6 @@ export const NotificationService = {
         }
       }
 
-      // Send email if critical or high priority
       if (isCritical || priority === 'HIGH') {
         const emailJobData = {
           to: user.email,
@@ -355,7 +357,7 @@ export const NotificationService = {
           html: rendered.emailBody,
         };
         const emailJobOptions = {
-          priority: 1, // Bull: 1=high
+          priority: 1,
           attempts: 3,
         };
         await emailQueue.add(emailJobData, emailJobOptions);
@@ -379,7 +381,6 @@ export const NotificationService = {
     targetRoles?: string[],
   ) {
     try {
-      // Get template
       const template = await prisma.notificationTemplate.findUnique({
         where: { type },
       });
@@ -388,18 +389,15 @@ export const NotificationService = {
         throw new Error(`Template not found or inactive: ${type}`);
       }
 
-      // Render template
       const rendered = renderNotificationTemplate(template, templateData);
 
-      // Get target users
-      let users = await prisma.user.findMany({
+      const users = await prisma.user.findMany({
         where: targetRoles ? { role: { in: targetRoles as any } } : undefined,
         select: { id: true, email: true },
       });
 
       logger.info(`📢 Sending bulk notification ${type} to ${users.length} users`);
 
-      // Process in batches of 100
       const batchSize = 100;
       let sentCount = 0;
 
@@ -409,7 +407,7 @@ export const NotificationService = {
         const jobs = batch.map((user) => {
           const notifJobData = {
             userId: user.id,
-            notificationId: '', // Bulk jobs may not have a notificationId yet
+            notificationId: '',
             type,
             title: rendered.pushTitle,
             body: rendered.pushBody,
@@ -417,9 +415,9 @@ export const NotificationService = {
             priority: 'LOW' as const,
           };
           const notifJobOptions = {
-            priority: 3, // Bull: 1=high, 2=normal, 3=low
+            priority: 3,
             attempts: 3,
-            delay: i * 100, // Stagger processing
+            delay: i * 100,
           };
           return notificationQueue.add(notifJobData, notifJobOptions);
         });
@@ -456,7 +454,11 @@ export const NotificationService = {
     try {
       const skip = (page - 1) * limit;
 
-      const where: any = { userId };
+      const where: any = {
+        userId,
+        expiresAt: { gt: new Date() },
+      };
+
       if (filters?.type) where.type = filters.type;
       if (filters?.isRead !== undefined) where.isRead = filters.isRead;
 
@@ -490,6 +492,14 @@ export const NotificationService = {
   ------------------------------------------------------- */
   async markAsRead(userId: string, notificationId: string) {
     try {
+      const existing = await prisma.notification.findFirst({
+        where: { id: notificationId, userId },
+      });
+
+      if (!existing) {
+        throw new Error('Notification not found or unauthorized');
+      }
+
       const notification = await prisma.notification.update({
         where: { id: notificationId },
         data: {
@@ -498,14 +508,13 @@ export const NotificationService = {
         },
       });
 
-      // Verify ownership
-      if (notification.userId !== userId) {
-        throw new Error('Unauthorized');
-      }
-
-      // Emit read event via socket
       socketManager.emitToUser(userId, 'notification:read', {
         id: notificationId,
+      });
+
+      const unreadCount = await this.getUnreadCount(userId);
+      socketManager.emitToUser(userId, 'notification:count-update', {
+        unreadCount,
       });
 
       return notification;
@@ -525,6 +534,10 @@ export const NotificationService = {
         data: { isRead: true, readAt: new Date() },
       });
 
+      socketManager.emitToUser(userId, 'notification:count-update', {
+        unreadCount: 0,
+      });
+
       logger.info(`✅ All notifications marked as read for user ${userId}`);
       return { success: true };
     } catch (error) {
@@ -539,7 +552,11 @@ export const NotificationService = {
   async getUnreadCount(userId: string) {
     try {
       const count = await prisma.notification.count({
-        where: { userId, isRead: false },
+        where: {
+          userId,
+          isRead: false,
+          expiresAt: { gt: new Date() },
+        },
       });
 
       return count;
@@ -564,6 +581,11 @@ export const NotificationService = {
 
       await prisma.notification.delete({
         where: { id: notificationId },
+      });
+
+      const unreadCount = await this.getUnreadCount(userId);
+      socketManager.emitToUser(userId, 'notification:count-update', {
+        unreadCount,
       });
 
       return { success: true };

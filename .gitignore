@@ -79,6 +79,6 @@ Thumbs.db
 *.swo
 *.bak
 
-service-account.json
+# Firebase
+serviceAccountKey.json
 kofil.pem
-sa.b64

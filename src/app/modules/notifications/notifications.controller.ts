@@ -22,12 +22,10 @@ export const NotificationController = {
    * Legacy: Register FCM token
    */
   registerToken: catchAsync(async (req: Request, res: Response) => {
-    const { token, platform, userId }: RegisterTokenInput = req.body;
+    const { token, platform }: RegisterTokenInput = req.body;
+    const userId = (req as any).user.id;
 
-    const finalUserId =
-      (req as any)?.user?.id !== undefined ? (req as any).user.id : (userId ?? null);
-
-    const result = await NotificationService.registerToken(finalUserId, token, platform ?? 'web');
+    const result = await NotificationService.registerToken(userId, token, platform ?? 'web');
 
     sendResponse(res, {
       statusCode: 200,
@@ -42,8 +40,9 @@ export const NotificationController = {
    */
   unregisterToken: catchAsync(async (req: Request, res: Response) => {
     const { token }: UnregisterTokenInput = req.body;
+    const userId = (req as any).user.id;
 
-    await NotificationService.unregisterToken(token);
+    await NotificationService.unregisterToken(userId, token);
 
     sendResponse(res, {
       statusCode: 200,

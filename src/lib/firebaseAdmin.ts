@@ -1,22 +1,61 @@
+import fs from 'fs';
+import path from 'path';
 import admin from 'firebase-admin';
 
 let firebaseApp: admin.app.App | null = null;
 
-export const getFirebaseAdmin = () => {
-  if (firebaseApp) return admin;
+const initializeFirebaseAdmin = () => {
+  if (firebaseApp) return firebaseApp;
 
-  const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
-  if (!base64) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_BASE64 is missing in env.');
+  if (admin.apps.length) {
+    firebaseApp = admin.app();
+    return firebaseApp;
   }
 
-  const json = Buffer.from(base64, 'base64').toString('utf8');
-  const serviceAccount = JSON.parse(json);
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+
+  if (serviceAccountPath) {
+    const absolutePath = path.resolve(process.cwd(), serviceAccountPath);
+
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`Firebase service account file not found at: ${absolutePath}`);
+    }
+
+    const serviceAccount = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+
+    firebaseApp = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+
+    return firebaseApp;
+  }
+
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error(
+      'Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY.',
+    );
+  }
 
   firebaseApp = admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id,
+    credential: admin.credential.cert({
+      projectId,
+      clientEmail,
+      privateKey,
+    }),
   });
 
-  return admin;
+  return firebaseApp;
 };
+
+export const getFirebaseAdmin = () => initializeFirebaseAdmin();
+
+export const getFirebaseMessaging = () => {
+  const app = initializeFirebaseAdmin();
+  return app.messaging();
+};
+
+export default initializeFirebaseAdmin;

@@ -11,6 +11,7 @@ import { jwtHelpers } from '../../utils/jwtHelpers';
 import sentEmailUtility from '../../utils/sentEmailUtility';
 import { welcomeEmailTemplate } from '../../utils/welcomeEmailTemplate';
 import { NotificationService } from '../notifications/notifications.service';
+import logger from '../../utils/logger';
 
 type RegisterPayload = {
   firstName: string;
@@ -315,7 +316,11 @@ const loginUserFromDB = async (
 
   // 🔥 10️⃣ Auto-register FCM push token (if provided)
   if (pushToken) {
-    await NotificationService.registerToken(user.id, pushToken, platform);
+    try {
+      await NotificationService.registerToken(user.id, pushToken, platform);
+    } catch (error) {
+      logger.error('Failed to register push token during login', error);
+    }
   }
 
   return {
