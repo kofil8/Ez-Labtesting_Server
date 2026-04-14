@@ -11,7 +11,8 @@ model User {
   id             String     @id @default(uuid())
   email          String     @unique
   password       String
-  phoneNumber    String     @db.VarChar(20)
+  phoneNumber    String     @unique
+  username       String?    @unique @db.VarChar(50)
   profileImage   String?
   bio            String?    @db.VarChar(500)
   firstName      String     @db.VarChar(100)

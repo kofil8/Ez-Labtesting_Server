@@ -43,19 +43,18 @@ const getProfileFromDB = async (user: any) => {
       id: true,
       firstName: true,
       lastName: true,
+      username: true,
       email: true,
       phoneNumber: true,
       profileImage: true,
       bio: true,
       gender: true,
+      addressLine1: true,
+      addressLine2: true,
+      city: true,
+      state: true,
+      zipCode: true,
       dateOfBirth: true,
-      address: true,
-      bloodType: true,
-      allergies: true,
-      medicalConditions: true,
-      medications: true,
-      emergencyContactName: true,
-      emergencyContactPhone: true,
       role: true,
       isVerified: true,
       createdAt: true,
@@ -133,7 +132,13 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
   return Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== null));
 };
 
-const changePasswordInDB = async (user: any, payload: any) => {
+const changePasswordInDB = async (
+  user: any,
+  payload: {
+    oldPassword: string;
+    newPassword: string;
+  },
+) => {
   const userData = await prisma.user.findUnique({
     where: { id: user.id },
   });

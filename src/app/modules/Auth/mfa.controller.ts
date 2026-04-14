@@ -5,6 +5,8 @@ import { MFAService } from '../../../lib/mfaService';
 import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
+import { setAuthCookies } from './auth.constants';
+import { issueAuthSessionTokens } from './auth.session';
 
 // ---------------------------
 // SETUP MFA - Generate Secret & QR Code
@@ -111,17 +113,9 @@ const verifyMFA = catchAsync(async (req, res) => {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid verification code');
   }
 
-  // Generate full access & refresh tokens
-  const accessToken = jwt.sign(
+  const { accessToken, refreshToken } = await issueAuthSessionTokens(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '15m' },
-  );
-
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '7d' },
+    { event: 'mfa-verify-issue' },
   );
 
   // Update last login
@@ -130,25 +124,7 @@ const verifyMFA = catchAsync(async (req, res) => {
     data: { lastLogin: new Date() },
   });
 
-  // Store refresh token in secure cookie
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  // Store access token in httpOnly cookie
-  res.cookie('accessToken', accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 15 * 60 * 1000,
-  });
+  setAuthCookies(res, { accessToken, refreshToken });
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -212,17 +188,9 @@ const verifyBackupCode = catchAsync(async (req, res) => {
   // Consume the backup code
   await MFAService.consumeBackupCode(user.id, codeIndex);
 
-  // Generate full access & refresh tokens
-  const accessToken = jwt.sign(
+  const { accessToken, refreshToken } = await issueAuthSessionTokens(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '15m' },
-  );
-
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '7d' },
+    { event: 'mfa-backup-issue' },
   );
 
   // Update last login
@@ -231,22 +199,7 @@ const verifyBackupCode = catchAsync(async (req, res) => {
     data: { lastLogin: new Date() },
   });
 
-  // Store tokens in cookies
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  res.cookie('accessToken', accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 15 * 60 * 1000,
-  });
+  setAuthCookies(res, { accessToken, refreshToken });
 
   const remainingCodes = user.mfaBackupCodes.length - 1;
 

@@ -4,12 +4,14 @@ import { z } from 'zod';
 dotenv.config();
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production']).default('development'),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(7001),
+  SERVER_URL: z.string().default('http://localhost:7001'),
   DATABASE_URL: z.string(),
   REDIS_URL: z.string(),
   JWT_SECRET: z.string(),
   EXPIRES_IN: z.string().default('15m'),
+  AUTH_SESSION_DEBUG: z.preprocess((v) => v === 'true' || v === true, z.boolean()).default(false),
   AWS_REGION: z.string().optional().default(''),
   AWS_ACCESS_KEY_ID: z.string().optional().default(''),
   AWS_SECRET_ACCESS_KEY: z.string().optional().default(''),
@@ -44,7 +46,7 @@ const envSchema = z.object({
   OTP_IMAGE_URL: z.string().optional().default(''),
 
   // Client URL for emails and CORS
-  CLIENT_URL: z.string().default('http://localhost:3000'),
+  FRONTEND_URL: z.string().default('http://localhost:3000'),
 
   // Pricing / Fees
   PAYMENT_CURRENCY: z.string().default('usd'),

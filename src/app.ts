@@ -5,6 +5,7 @@ import express, { Application, ErrorRequestHandler, Request, Response } from 'ex
 import helmet from 'helmet';
 import httpStatus from 'http-status';
 import morgan from 'morgan';
+import path from 'path';
 import GlobalErrorHandler from './app/middlewares/globalErrorHandler';
 import { defaultLimiter } from './app/middlewares/rateLimit';
 import router from './app/routes';
@@ -14,13 +15,12 @@ const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
 
 // 🧩 Global middlewares
-const defaultOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-
 const corsOptions = {
   // Allow the Next.js dev server and any comma-separated origins in ALLOWED_ORIGINS
-  origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-    : defaultOrigins,
+  origin:
+    process.env.NODE_ENV === 'production'
+      ? ['https://ezlabtesting.com']
+      : ['http://localhost:3000'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -46,6 +46,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(morganFormat));
 app.use(compression());
 app.use(cookieParser());
+
+app.use('/assets', express.static(path.join(__dirname, '../assets')));
 
 // 📋 Logging
 app.use(morgan('dev'));

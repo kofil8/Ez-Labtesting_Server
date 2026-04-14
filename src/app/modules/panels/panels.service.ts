@@ -33,7 +33,7 @@ type GetPanelsQuery = {
   limit?: number | string;
   sortBy?: string;
   sortOrder?: Prisma.SortOrder;
-  searchTerm?: string;
+  search?: string;
   isActive?: string | boolean;
   minPrice?: number | string;
   maxPrice?: number | string;
@@ -121,7 +121,7 @@ const createPanelInDB = async (payload: CreatePanelPayload, file?: Express.Multe
 
 // ✅ GET ALL PANELS WITH FILTERS
 const getPanelsDB = async (query: GetPanelsQuery = {}) => {
-  const { searchTerm, isActive, minPrice, maxPrice, ...rest } = query;
+  const { search, isActive, minPrice, maxPrice, ...rest } = query;
 
   const pagination = calculatePagination({
     ...rest,
@@ -132,11 +132,11 @@ const getPanelsDB = async (query: GetPanelsQuery = {}) => {
   const andConditions: Prisma.TestPanelWhereInput[] = [];
 
   // Search term
-  if (searchTerm) {
+  if (search) {
     andConditions.push({
       OR: [
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { description: { contains: searchTerm, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
       ] as Prisma.TestPanelWhereInput[],
     });
   }

@@ -7,10 +7,6 @@ import { Role } from '@prisma/client';
 
 const router = express.Router();
 
-// Self endpoints
-router.get('/me', auth(), UsersController.getMe);
-router.patch('/me', auth(), validateRequest(UserValidation.updateMe), UsersController.updateMe);
-
 // Admin endpoints
 router.get('/', auth(Role.ADMIN, Role.SUPER_ADMIN), UsersController.getUsers);
 

@@ -20,7 +20,7 @@ export type AuthenticatedSocket = Socket<any, any, any, SocketData>;
 export const initializeSocketIO = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
-      origin: env.CLIENT_URL,
+      origin: env.FRONTEND_URL,
       credentials: true,
       methods: ['GET', 'POST'],
     },

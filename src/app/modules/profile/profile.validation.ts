@@ -7,15 +7,12 @@ const updateProfileBodyData = z.object({
   phoneNumber: z.string().optional(),
   bio: z.string().optional(),
   gender: z.nativeEnum(Gender).optional(),
-  dateOfBirth: z.string().optional(), // Expecting ISO string or date string
-  address: z.string().optional(),
-  bloodType: z.string().optional(),
-  allergies: z.string().optional(),
-  medicalConditions: z.string().optional(),
-  medications: z.string().optional(),
-  emergencyContactName: z.string().optional(),
-  emergencyContactPhone: z.string().optional(),
-  removeProfileImage: z.boolean().optional(),
+  dateOfBirth: z.string().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
 });
 
 const updateProfile = z.object({

@@ -133,7 +133,7 @@ type GetTestsQuery = {
   limit?: number | string;
   sortBy?: string;
   sortOrder?: Prisma.SortOrder;
-  searchTerm?: string;
+  search?: string;
   minPrice?: number | string;
   maxPrice?: number | string;
   testCode?: string;
@@ -148,7 +148,7 @@ type GetTestsQuery = {
 
 const getTestsDB = async (query: GetTestsQuery = {}) => {
   const {
-    searchTerm,
+    search,
     minPrice,
     maxPrice,
     categoryId,
@@ -191,10 +191,10 @@ const getTestsDB = async (query: GetTestsQuery = {}) => {
 
   // categorySlug removed (slug field no longer on Category model)
 
-  if (searchTerm) {
+  if (search) {
     andConditions.push({
       OR: searchableFields.map((field) => ({
-        [field]: { contains: searchTerm, mode: 'insensitive' },
+        [field]: { contains: search, mode: 'insensitive' },
       })) as Prisma.TestWhereInput[],
     });
   }
@@ -221,7 +221,7 @@ const getTestsDB = async (query: GetTestsQuery = {}) => {
   const where: Prisma.TestWhereInput = andConditions.length ? { AND: andConditions } : {};
 
   console.log('[DEBUG] getTestsDB - Query params:', {
-    searchTerm,
+    search,
     minPrice,
     maxPrice,
     categoryId,

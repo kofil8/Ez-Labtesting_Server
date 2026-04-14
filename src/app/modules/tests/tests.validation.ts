@@ -38,7 +38,7 @@ const getTestsQuery = z.object({
     limit: numberFromString.optional(),
     sortBy: z.string().optional(),
     sortOrder: z.enum(['asc', 'desc']).optional(),
-    searchTerm: z.string().optional(),
+    search: z.string().optional(),
     minPrice: numberFromString.optional(),
     maxPrice: numberFromString.optional(),
     testCode: z.string().optional(),

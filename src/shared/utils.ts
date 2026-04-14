@@ -1,7 +1,8 @@
 export interface PaginationOptions {
   page?: number;
   limit?: number;
-  searchTerm?: string;
+  search?: string;
+  search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }

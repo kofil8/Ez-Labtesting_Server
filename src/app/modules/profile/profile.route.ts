@@ -20,7 +20,7 @@ router.patch(
   ProfileController.updateMyProfile,
 );
 
-router.post(
+router.patch(
   '/change-password',
   auth(),
   validateRequest(ProfileValidation.changePassword),

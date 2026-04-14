@@ -1,5 +1,6 @@
 import redisClient from '../config/redis';
 import prisma from '../shared/prisma';
+import { env } from './env';
 
 /**
  * --------------------------------------------
@@ -10,6 +11,20 @@ import prisma from '../shared/prisma';
 // NOTE: Prisma client is a singleton exported from src/shared/prisma.ts
 // Do not instantiate additional PrismaClient instances.
 export { prisma } from '../shared/prisma';
+
+const describeRedisTarget = (redisUrl: string) => {
+  try {
+    const parsedUrl = new URL(redisUrl);
+    const dbSegment = parsedUrl.pathname.replace(/^\//, '');
+    const parsedDb = dbSegment ? Number.parseInt(dbSegment, 10) : 0;
+    const db = Number.isFinite(parsedDb) ? parsedDb : 0;
+    const port = parsedUrl.port || '6379';
+
+    return `host=${parsedUrl.hostname} port=${port} db=${db}`;
+  } catch {
+    return 'invalid REDIS_URL';
+  }
+};
 
 export const connectPostgres = async () => {
   try {
@@ -37,6 +52,8 @@ export const disconnectPostgres = async () => {
  */
 
 export const connectRedis = async () => {
+  console.log(`🔵 connecting Redis (${describeRedisTarget(env.REDIS_URL)})...`);
+
   return new Promise<void>((resolve, reject) => {
     // If already connected or ready, resolve immediately
     if (redisClient.status === 'ready' || redisClient.status === 'connect') {
@@ -93,7 +110,8 @@ export const connectDatabases = async () => {
     await connectRedis();
     console.log('🟢 Redis resolved');
   } catch (error) {
-    console.error('🔴 Redis connection failed. Continuing without Redis.');
+    console.error('🔴 Redis connection failed. Aborting startup.');
+    throw error;
   }
   console.log('🔵 connectDatabases(): completed.');
 };

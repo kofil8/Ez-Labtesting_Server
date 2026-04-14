@@ -17,7 +17,7 @@ const getProfile = catchAsync(async (req: Request & { user?: any }, res: Respons
 const updateMyProfile = catchAsync(
   async (req: Request & { file?: Express.Multer.File }, res: Response) => {
     const id = req.user?.id as string;
-    const payload = req.body.bodyData;
+    const payload = req.body.data ? JSON.parse(req.body.data) : {};
     const file = req.file as Express.Multer.File | undefined;
     const result = await ProfileService.updateMyProfileIntoDB(id, payload, file);
 

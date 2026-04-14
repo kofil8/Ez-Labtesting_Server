@@ -7,12 +7,22 @@ import { UsersService } from './users.service';
 const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
 
 const getUsers = catchAsync(async (req: Request, res: Response) => {
+  const sortOrderParam = (req.query.sortOrder as string)?.toLowerCase();
+  const validSortOrder: 'asc' | 'desc' = sortOrderParam === 'asc' ? 'asc' : 'desc';
+
+  // Accept both 'limit' and 'total' as alias for items per page
+  const limitValue = req.query.limit || req.query.total;
+
+  // Accept 'search', 'search' and common typos
+  const searchValue =
+    req.query.search || req.query.search || req.query.serachTerm || req.query.serach;
+
   const options = {
     page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
-    limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
-    searchTerm: req.query.searchTerm as string,
+    limit: limitValue ? parseInt(limitValue as string, 10) : undefined,
+    search: (searchValue as string)?.trim() || undefined,
     sortBy: req.query.sortBy as string,
-    sortOrder: req.query.sortOrder as 'asc' | 'desc',
+    sortOrder: validSortOrder,
     role: req.query.role as string,
   };
   const result = await UsersService.getUsersFromDB(options);
@@ -65,33 +75,10 @@ const updateUser = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const getMe = catchAsync(async (req: Request & { user?: any }, res: Response) => {
-  const userId = req.user?.id;
-  const result = await UsersService.getUserByIdFromDB(userId);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'Profile retrieved successfully',
-    data: result,
-  });
-});
-
-const updateMe = catchAsync(async (req: Request & { user?: any }, res: Response) => {
-  const userId = req.user?.id;
-  const result = await UsersService.updateMeInDB(userId, req.body);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'Profile updated successfully',
-    data: result,
-  });
-});
 export const UsersController = {
   getUsers,
   getUserById,
   deleteUser,
   createUser,
   updateUser,
-  getMe,
-  updateMe,
 };

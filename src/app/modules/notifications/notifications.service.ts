@@ -7,7 +7,7 @@ import logger from '../../utils/logger';
 import { renderNotificationTemplate, validateTemplateData } from '../../utils/templateRenderer';
 
 const admin = getFirebaseAdmin();
-const appUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+const appUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 // Priority mapping for notification types
 const priorityMapping: Record<NotificationType, NotificationPriority> = {

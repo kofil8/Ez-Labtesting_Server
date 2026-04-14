@@ -19,15 +19,23 @@ router.post('/verify-otp', validateRequest(authValidation.verifyOTP), AuthContro
 router.post('/login', validateRequest(authValidation.loginUser), AuthControllers.loginUser);
 
 // 👉 Refresh Token (No Auth Required)
-router.post('/refresh-token', AuthControllers.refreshToken);
+router.post('/refreshtoken', AuthControllers.refreshToken);
 
 // 👉 Logout (Auth Required)
 router.post('/logout', auth(), AuthControllers.logoutUser);
 
 // 👉 Forgot Password (No Auth Required)
-router.post('/forgot-password', validateRequest(authValidation.forgotPassword), AuthControllers.forgotPassword);
+router.post(
+  '/forgot-password',
+  validateRequest(authValidation.forgotPassword),
+  AuthControllers.forgotPassword,
+);
 
 // 👉 Reset Password (No Auth Required)
-router.post('/reset-password', validateRequest(authValidation.resetPassword), AuthControllers.resetPassword);
+router.post(
+  '/reset-password',
+  validateRequest(authValidation.resetPassword),
+  AuthControllers.resetPassword,
+);
 
 export const AuthRouters = router;

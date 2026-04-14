@@ -1,8 +1,10 @@
+import { Request, Response } from 'express';
 import httpStatus from 'http-status';
 import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
 import { AuthServices } from './auth.service';
+import { clearAuthCookies, setAuthCookies } from './auth.constants';
 
 // ---------------------------
 // REGISTER USER
@@ -48,13 +50,12 @@ const verifyOTP = catchAsync(async (req, res) => {
 });
 
 // ---------------------------
-// LOGIN USER (Auto-register push token)
+// LOGIN USER
 // ---------------------------
-const loginUser = catchAsync(async (req, res) => {
+const loginUser = catchAsync(async (req: Request, res: Response) => {
   const forwarded = req.headers['x-forwarded-for'];
   const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : (req.ip as string);
 
-  // 👇 Extract pushToken & platform from body
   const { pushToken, platform } = req.body;
 
   const result = await AuthServices.loginUserFromDB(
@@ -66,7 +67,6 @@ const loginUser = catchAsync(async (req, res) => {
     ip,
   );
 
-  // Check if MFA is required
   if (result.mfaRequired) {
     sendResponse(res, {
       statusCode: httpStatus.OK,
@@ -83,26 +83,7 @@ const loginUser = catchAsync(async (req, res) => {
 
   const { accessToken, refreshToken, user } = result;
 
-  // Store refresh token in secure cookie
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  // Also store access token in httpOnly cookie for backend consumption
-  // Shorter expiry aligned with JWT lifetime
-  res.cookie('accessToken', accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 15 * 60 * 1000, // 15 minutes
-  });
+  setAuthCookies(res, { accessToken, refreshToken });
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -117,10 +98,10 @@ const loginUser = catchAsync(async (req, res) => {
 });
 
 // ---------------------------
-// REFRESH ACCESS TOKEN
+// REFRESH TOKEN
 // ---------------------------
-const refreshToken = catchAsync(async (req, res) => {
-  const token = req.cookies.refreshToken;
+const refreshToken = catchAsync(async (req: Request, res: Response) => {
+  const token = req.cookies?.refreshToken;
 
   if (!token) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Refresh token missing');
@@ -128,23 +109,9 @@ const refreshToken = catchAsync(async (req, res) => {
 
   const result = await AuthServices.refreshAccessToken(token);
 
-  res.cookie('refreshToken', result.refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  // Update access token cookie alongside refresh
-  res.cookie('accessToken', result.accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 15 * 60 * 1000, // 15 minutes
+  setAuthCookies(res, {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
   });
 
   sendResponse(res, {
@@ -158,39 +125,22 @@ const refreshToken = catchAsync(async (req, res) => {
 });
 
 // ---------------------------
-// LOGOUT USER (Auto-remove push token)
+// LOGOUT USER
 // ---------------------------
 const logoutUser = catchAsync(async (req, res) => {
   const accessToken = req.token;
   const userId = req.user?.id;
+  const refreshToken = req.cookies?.refreshToken ?? null;
 
   if (!accessToken || !userId) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized request');
   }
 
-  // Get the pushToken from frontend request (optional)
   const pushToken = req.body?.pushToken || null;
 
-  // Calls service and passes pushToken
-  await AuthServices.logoutUser(userId, accessToken, pushToken);
+  await AuthServices.logoutUser(userId, accessToken, refreshToken, pushToken);
 
-  // Clear refresh token cookie
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-  });
-
-  // Clear access token cookie
-  res.clearCookie('accessToken', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-  });
+  clearAuthCookies(res);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

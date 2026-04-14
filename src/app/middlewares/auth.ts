@@ -48,7 +48,7 @@ const auth = (...roles: string[]) => {
         },
       });
 
-      if (!user) throw new ApiError(httpStatus.UNAUTHORIZED, 'User not found');
+      if (!user) throw new ApiError(httpStatus.UNAUTHORIZED, 'User not found for token');
 
       req.user = decoded;
       req.token = token;

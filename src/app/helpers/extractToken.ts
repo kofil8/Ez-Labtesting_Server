@@ -1,13 +1,27 @@
-export const extractToken = (authorizationHeader?: string): string | null => {
-  if (!authorizationHeader) return null;
+export const extractToken = (
+  authorizationHeader?: string | string[] | null,
+): string | null => {
+  const headerValue = Array.isArray(authorizationHeader)
+    ? authorizationHeader.find(
+        (value) => typeof value === 'string' && value.trim().length > 0,
+      ) ?? null
+    : authorizationHeader;
 
-  // If Bearer token
-  if (authorizationHeader.startsWith('Bearer ')) {
-    const parts = authorizationHeader.split(' ');
-    if (parts.length === 2) return parts[1];
+  if (!headerValue || typeof headerValue !== 'string') {
     return null;
   }
 
-  // If raw token
-  return authorizationHeader;
+  const normalizedHeader = headerValue.trim();
+  if (!normalizedHeader) {
+    return null;
+  }
+
+  const [scheme, ...tokenParts] = normalizedHeader.split(/\s+/);
+
+  if (/^bearer$/i.test(scheme)) {
+    const bearerToken = tokenParts.join(' ').trim();
+    return bearerToken || null;
+  }
+
+  return normalizedHeader;
 };
