@@ -15,9 +15,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "seed:categories": "ts-node -r tsconfig-paths/register prisma/seed-categories.ts",
-    "seed:tests": "ts-node -r tsconfig-paths/register prisma/seed-tests.ts",
-    "seed:lab-centers": "ts-node -r tsconfig-paths/register prisma/seed-lab-centers.ts",
-    "seed:users-panels": "ts-node -r tsconfig-paths/register prisma/seed-users-panels.ts",
+    "seed:users": "ts-node -r tsconfig-paths/register prisma/seed-user.ts",
     "s3:migrate": "ts-node -r tsconfig-paths/register src/scripts/migrate-to-s3.ts"
   },
   "dependencies": {
@@ -75,7 +73,7 @@
     "@types/morgan": "^1.9.8",
     "@types/multer": "^2.0.0",
     "@types/multer-s3": "^3.0.3",
-    "@types/node": "^25.3.0",
+    "@types/node": "^25.6.0",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^7.0.4",
     "@types/web-push": "^3.6.4",

@@ -14,86 +14,114 @@ CREATE TYPE "NotificationType" AS ENUM ('ORDER_CREATED', 'ORDER_CONFIRMED', 'ORD
 CREATE TYPE "NotificationPriority" AS ENUM ('HIGH', 'MEDIUM', 'LOW');
 
 -- CreateEnum
-CREATE TYPE "RestrictionType" AS ENUM ('blocked', 'requires_physician');
+CREATE TYPE "RestrictionType" AS ENUM ('BLOCKED', 'REQUIRES_PHYSICIAN');
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('pending', 'paid', 'failed', 'refunded');
+CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED');
 
 -- CreateEnum
 CREATE TYPE "PaymentMethodType" AS ENUM ('CARD', 'ACH');
 
 -- CreateEnum
-CREATE TYPE "OrderStatus" AS ENUM ('pending', 'processing', 'requisition_sent', 'completed', 'cancelled');
+CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'PROCESSING', 'REQUISITION_SENT', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
 CREATE TYPE "AccessSubmissionStatus" AS ENUM ('NOT_SUBMITTED', 'PENDING', 'SUBMITTED', 'FAILED', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "RequisitionStatus" AS ENUM ('generated', 'sent_to_lab', 'specimen_collected', 'processing', 'results_ready');
+CREATE TYPE "RequisitionStatus" AS ENUM ('GENERATED', 'SENT_TO_LAB', 'SPECIMEN_COLLECTED', 'PROCESSING', 'RESULTS_READY');
 
 -- CreateEnum
-CREATE TYPE "DiscountType" AS ENUM ('percent', 'fixed');
+CREATE TYPE "DiscountType" AS ENUM ('PERCENT', 'FIXED');
 
 -- CreateEnum
 CREATE TYPE "PatientRelation" AS ENUM ('SELF', 'SPOUSE', 'CHILD', 'PARENT', 'OTHER');
 
+-- CreateEnum
+CREATE TYPE "SupportCategory" AS ENUM ('GENERAL', 'BILLING', 'ORDER', 'TECHNICAL', 'RESULTS');
+
+-- CreateEnum
+CREATE TYPE "SupportPriority" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'URGENT');
+
+-- CreateEnum
+CREATE TYPE "SupportTicketStatus" AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');
+
+-- CreateEnum
+CREATE TYPE "SupportSenderType" AS ENUM ('CUSTOMER', 'ADMIN', 'SYSTEM');
+
 -- CreateTable
 CREATE TABLE "User" (
-    "id" TEXT NOT NULL,
+    "id" UUID NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
-    "phoneNumber" VARCHAR(20) NOT NULL,
+    "phoneNumber" TEXT NOT NULL,
+    "username" VARCHAR(50),
     "profileImage" TEXT,
     "bio" VARCHAR(500),
-    "firstName" VARCHAR(100),
-    "lastName" VARCHAR(100),
+    "firstName" VARCHAR(100) NOT NULL,
+    "lastName" VARCHAR(100) NOT NULL,
     "dateOfBirth" TIMESTAMP(3),
+    "gender" "Gender",
     "addressLine1" VARCHAR(255),
     "addressLine2" VARCHAR(255),
     "city" VARCHAR(100),
     "state" CHAR(2),
     "zipCode" VARCHAR(10),
     "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "emailVerifiedAt" TIMESTAMP(3),
+    "phoneVerifiedAt" TIMESTAMP(3),
+    "marketingOptIn" BOOLEAN NOT NULL DEFAULT false,
     "role" "Role" NOT NULL DEFAULT 'CUSTOMER',
-    "laboratoryId" BIGINT,
+    "laboratoryId" UUID,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
     "lastAction" TIMESTAMP(3),
     "lastLogin" TIMESTAMP(3),
+    "lastPasswordChangedAt" TIMESTAMP(3),
     "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
     "mfaBackupCodes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "mfaEnabled" BOOLEAN NOT NULL DEFAULT false,
     "mfaSecret" TEXT,
     "mfaSetupAt" TIMESTAMP(3),
-    "gender" "Gender",
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "TestCategory" (
-    "id" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
     "name" VARCHAR(100) NOT NULL,
     "slug" VARCHAR(120) NOT NULL,
     "description" TEXT,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TestCategory_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Test" (
-    "id" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
     "name" VARCHAR(255) NOT NULL,
     "slug" VARCHAR(280) NOT NULL,
     "description" TEXT,
     "shortDescription" VARCHAR(500),
-    "categoryId" BIGINT NOT NULL,
+    "categoryId" UUID NOT NULL,
     "specimenType" VARCHAR(100),
-    "turnaroundDays" SMALLINT,
+    "baseTurnaroundDays" SMALLINT,
     "isPanel" BOOLEAN NOT NULL DEFAULT false,
     "cptCode" VARCHAR(20),
+    "preparationInstructions" TEXT,
+    "internalNotes" TEXT,
+    "seoTitle" VARCHAR(255),
+    "seoDescription" VARCHAR(500),
+    "searchKeywords" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "requiresFasting" BOOLEAN NOT NULL DEFAULT false,
+    "minAge" SMALLINT,
+    "maxAge" SMALLINT,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "isPopular" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -104,57 +132,80 @@ CREATE TABLE "Test" (
 
 -- CreateTable
 CREATE TABLE "TestComponent" (
-    "id" BIGSERIAL NOT NULL,
-    "panelId" BIGINT NOT NULL,
-    "componentTestId" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
+    "panelId" UUID NOT NULL,
+    "componentTestId" UUID NOT NULL,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "TestComponent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Laboratory" (
-    "id" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
     "name" VARCHAR(255) NOT NULL,
+    "displayName" VARCHAR(255),
     "code" VARCHAR(20) NOT NULL,
     "apiEndpoint" VARCHAR(500),
     "apiKeyEncrypted" TEXT,
+    "integrationType" VARCHAR(50),
+    "supportsRealtimeSubmission" BOOLEAN NOT NULL DEFAULT false,
+    "supportsResultsRetrieval" BOOLEAN NOT NULL DEFAULT false,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isVisibleToCustomers" BOOLEAN NOT NULL DEFAULT true,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Laboratory_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "LabTest" (
-    "id" BIGSERIAL NOT NULL,
-    "testId" BIGINT NOT NULL,
-    "laboratoryId" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
+    "testId" UUID NOT NULL,
+    "laboratoryId" UUID NOT NULL,
     "labTestCode" VARCHAR(50) NOT NULL,
+    "externalTestId" VARCHAR(100),
     "labCost" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "retailPrice" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    "salePrice" DECIMAL(10,2),
+    "currency" CHAR(3) NOT NULL DEFAULT 'USD',
     "isAvailable" BOOLEAN NOT NULL DEFAULT true,
+    "isVisible" BOOLEAN NOT NULL DEFAULT true,
     "turnaroundDaysOverride" SMALLINT,
+    "specimenTypeOverride" VARCHAR(100),
+    "patientInstructionsOverride" TEXT,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "LabTest_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "StateRestriction" (
-    "id" BIGSERIAL NOT NULL,
+    "id" UUID NOT NULL,
     "stateCode" CHAR(2) NOT NULL,
-    "testId" BIGINT,
+    "testId" UUID,
+    "laboratoryId" UUID,
     "restrictionType" "RestrictionType" NOT NULL,
     "notes" TEXT,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "StateRestriction_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "DrawCenter" (
-    "id" BIGSERIAL NOT NULL,
+    "id" UUID NOT NULL,
+    "laboratoryId" UUID NOT NULL,
+    "externalCenterId" VARCHAR(100),
     "name" VARCHAR(255) NOT NULL,
-    "laboratoryId" BIGINT,
     "addressLine1" VARCHAR(255) NOT NULL,
     "addressLine2" VARCHAR(255),
     "city" VARCHAR(100) NOT NULL,
@@ -164,38 +215,48 @@ CREATE TABLE "DrawCenter" (
     "longitude" DECIMAL(10,7),
     "phone" VARCHAR(20),
     "hours" TEXT,
+    "timezone" VARCHAR(50),
+    "acceptsWalkIns" BOOLEAN NOT NULL DEFAULT true,
+    "appointmentRequired" BOOLEAN NOT NULL DEFAULT false,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isVisible" BOOLEAN NOT NULL DEFAULT true,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "DrawCenter_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CartItem" (
-    "id" BIGSERIAL NOT NULL,
-    "userId" TEXT NOT NULL,
-    "testId" BIGINT NOT NULL,
-    "laboratoryId" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
+    "userId" UUID NOT NULL,
+    "testId" UUID NOT NULL,
+    "laboratoryId" UUID NOT NULL,
+    "labTestId" UUID NOT NULL,
     "price" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "CartItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Order" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT,
-    "laboratoryId" BIGINT NOT NULL,
-    "drawCenterId" BIGINT,
+    "id" UUID NOT NULL,
+    "userId" UUID,
+    "laboratoryId" UUID NOT NULL,
+    "drawCenterId" UUID,
     "orderNumber" VARCHAR(30) NOT NULL,
+    "currency" CHAR(3) NOT NULL DEFAULT 'USD',
     "subtotal" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "tax" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "processingFee" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "discount" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "total" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'pending',
+    "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
     "paymentMethodType" "PaymentMethodType",
-    "orderStatus" "OrderStatus" NOT NULL DEFAULT 'pending',
+    "orderStatus" "OrderStatus" NOT NULL DEFAULT 'PENDING',
     "stripePaymentIntentId" TEXT,
     "stripeChargeId" TEXT,
     "stripePaymentMethodId" TEXT,
@@ -209,9 +270,16 @@ CREATE TABLE "Order" (
     "accessPayloadJson" JSONB,
     "accessResponseJson" JSONB,
     "accessErrorMessage" TEXT,
+    "customerEmailSnapshot" VARCHAR(255),
+    "customerPhoneSnapshot" VARCHAR(20),
+    "pricingSnapshotJson" JSONB,
     "paidAt" TIMESTAMP(3),
+    "placedAt" TIMESTAMP(3),
     "submittedToLabAt" TIMESTAMP(3),
     "labOrderPlacedAt" TIMESTAMP(3),
+    "cancelledAt" TIMESTAMP(3),
+    "refundAmount" DECIMAL(10,2),
+    "refundReason" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "currentTrackingStep" INTEGER NOT NULL DEFAULT 1,
@@ -224,8 +292,8 @@ CREATE TABLE "Order" (
 
 -- CreateTable
 CREATE TABLE "OrderPatient" (
-    "id" TEXT NOT NULL,
-    "orderId" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "orderId" UUID NOT NULL,
     "relationToUser" "PatientRelation" NOT NULL DEFAULT 'SELF',
     "firstName" VARCHAR(100) NOT NULL,
     "lastName" VARCHAR(100) NOT NULL,
@@ -246,26 +314,34 @@ CREATE TABLE "OrderPatient" (
 
 -- CreateTable
 CREATE TABLE "OrderItem" (
-    "id" BIGSERIAL NOT NULL,
-    "orderId" TEXT NOT NULL,
-    "testId" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
+    "orderId" UUID NOT NULL,
+    "testId" UUID NOT NULL,
+    "labTestId" UUID NOT NULL,
     "labTestCode" VARCHAR(50) NOT NULL,
+    "testName" VARCHAR(255) NOT NULL,
+    "laboratoryName" VARCHAR(255) NOT NULL,
     "price" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     "labCost" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    "currency" CHAR(3) NOT NULL DEFAULT 'USD',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "OrderItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Requisition" (
-    "id" BIGSERIAL NOT NULL,
-    "orderId" TEXT NOT NULL,
-    "orderItemId" BIGINT,
-    "laboratoryId" BIGINT,
+    "id" UUID NOT NULL,
+    "orderId" UUID NOT NULL,
+    "orderItemId" UUID,
+    "laboratoryId" UUID,
     "requisitionNumber" VARCHAR(50),
+    "requisitionPdfUrl" VARCHAR(500),
     "requisitionPdfPath" VARCHAR(500),
-    "status" "RequisitionStatus" NOT NULL DEFAULT 'generated',
     "labOrderId" VARCHAR(100),
+    "status" "RequisitionStatus" NOT NULL DEFAULT 'GENERATED',
+    "submittedAt" TIMESTAMP(3),
+    "resultsReadyAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -274,7 +350,7 @@ CREATE TABLE "Requisition" (
 
 -- CreateTable
 CREATE TABLE "PromoCode" (
-    "id" BIGSERIAL NOT NULL,
+    "id" UUID NOT NULL,
     "code" VARCHAR(50) NOT NULL,
     "discountType" "DiscountType" NOT NULL,
     "discountValue" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -290,9 +366,9 @@ CREATE TABLE "PromoCode" (
 
 -- CreateTable
 CREATE TABLE "OrderPromoCode" (
-    "id" BIGSERIAL NOT NULL,
-    "orderId" TEXT NOT NULL,
-    "promoCodeId" BIGINT NOT NULL,
+    "id" UUID NOT NULL,
+    "orderId" UUID NOT NULL,
+    "promoCodeId" UUID NOT NULL,
     "discountAmount" DECIMAL(10,2) NOT NULL DEFAULT 0.00,
 
     CONSTRAINT "OrderPromoCode_pkey" PRIMARY KEY ("id")
@@ -300,9 +376,9 @@ CREATE TABLE "OrderPromoCode" (
 
 -- CreateTable
 CREATE TABLE "TestReview" (
-    "id" TEXT NOT NULL,
-    "testId" BIGINT NOT NULL,
-    "userId" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "testId" UUID NOT NULL,
+    "userId" UUID NOT NULL,
     "rating" SMALLINT NOT NULL,
     "title" VARCHAR(200) NOT NULL,
     "comment" VARCHAR(1000) NOT NULL,
@@ -316,9 +392,9 @@ CREATE TABLE "TestReview" (
 
 -- CreateTable
 CREATE TABLE "ReviewHelpful" (
-    "id" TEXT NOT NULL,
-    "reviewId" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "reviewId" UUID NOT NULL,
+    "userId" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "ReviewHelpful_pkey" PRIMARY KEY ("id")
@@ -326,8 +402,8 @@ CREATE TABLE "ReviewHelpful" (
 
 -- CreateTable
 CREATE TABLE "OrderTrackingEvent" (
-    "id" TEXT NOT NULL,
-    "orderId" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "orderId" UUID NOT NULL,
     "step" INTEGER NOT NULL,
     "status" VARCHAR(50) NOT NULL,
     "message" VARCHAR(500),
@@ -339,14 +415,14 @@ CREATE TABLE "OrderTrackingEvent" (
 
 -- CreateTable
 CREATE TABLE "SupportTicket" (
-    "id" TEXT NOT NULL,
+    "id" UUID NOT NULL,
     "ticketNumber" VARCHAR(30) NOT NULL,
-    "userId" TEXT NOT NULL,
-    "orderId" TEXT,
+    "userId" UUID NOT NULL,
+    "orderId" UUID,
     "subject" VARCHAR(200) NOT NULL,
-    "category" VARCHAR(50) NOT NULL DEFAULT 'general',
-    "priority" VARCHAR(20) NOT NULL DEFAULT 'medium',
-    "status" VARCHAR(20) NOT NULL DEFAULT 'open',
+    "category" "SupportCategory" NOT NULL DEFAULT 'GENERAL',
+    "priority" "SupportPriority" NOT NULL DEFAULT 'MEDIUM',
+    "status" "SupportTicketStatus" NOT NULL DEFAULT 'OPEN',
     "responseTarget" TIMESTAMP(3) NOT NULL,
     "respondedAt" TIMESTAMP(3),
     "resolvedAt" TIMESTAMP(3),
@@ -358,10 +434,10 @@ CREATE TABLE "SupportTicket" (
 
 -- CreateTable
 CREATE TABLE "SupportMessage" (
-    "id" TEXT NOT NULL,
-    "ticketId" TEXT NOT NULL,
-    "senderId" TEXT NOT NULL,
-    "senderType" VARCHAR(20) NOT NULL,
+    "id" UUID NOT NULL,
+    "ticketId" UUID NOT NULL,
+    "senderId" UUID NOT NULL,
+    "senderType" "SupportSenderType" NOT NULL,
     "message" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -370,8 +446,8 @@ CREATE TABLE "SupportMessage" (
 
 -- CreateTable
 CREATE TABLE "PushToken" (
-    "id" SERIAL NOT NULL,
-    "userId" TEXT,
+    "id" UUID NOT NULL,
+    "userId" UUID,
     "token" TEXT NOT NULL,
     "platform" TEXT,
     "revoked" BOOLEAN NOT NULL DEFAULT false,
@@ -383,8 +459,8 @@ CREATE TABLE "PushToken" (
 
 -- CreateTable
 CREATE TABLE "Notification" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "userId" UUID NOT NULL,
     "type" "NotificationType" NOT NULL,
     "title" VARCHAR(200) NOT NULL,
     "body" TEXT NOT NULL,
@@ -402,7 +478,7 @@ CREATE TABLE "Notification" (
 
 -- CreateTable
 CREATE TABLE "NotificationTemplate" (
-    "id" TEXT NOT NULL,
+    "id" UUID NOT NULL,
     "type" "NotificationType" NOT NULL,
     "name" VARCHAR(200) NOT NULL,
     "description" TEXT,
@@ -420,8 +496,8 @@ CREATE TABLE "NotificationTemplate" (
 
 -- CreateTable
 CREATE TABLE "AuditLog" (
-    "id" TEXT NOT NULL,
-    "adminId" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "adminId" UUID NOT NULL,
     "adminName" TEXT NOT NULL,
     "action" VARCHAR(50) NOT NULL,
     "resource" VARCHAR(100) NOT NULL,
@@ -431,7 +507,7 @@ CREATE TABLE "AuditLog" (
     "changesAfter" TEXT,
     "ipAddress" VARCHAR(50),
     "userAgent" TEXT,
-    "status" VARCHAR(20) NOT NULL DEFAULT 'success',
+    "status" VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     "errorMessage" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -442,13 +518,22 @@ CREATE TABLE "AuditLog" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
-CREATE INDEX "User_email_idx" ON "User"("email");
+CREATE UNIQUE INDEX "User_phoneNumber_key" ON "User"("phoneNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
 
 -- CreateIndex
 CREATE INDEX "User_role_idx" ON "User"("role");
 
 -- CreateIndex
 CREATE INDEX "User_laboratoryId_idx" ON "User"("laboratoryId");
+
+-- CreateIndex
+CREATE INDEX "User_status_idx" ON "User"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TestCategory_name_key" ON "TestCategory"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TestCategory_slug_key" ON "TestCategory"("slug");
@@ -478,10 +563,13 @@ CREATE INDEX "Test_cptCode_idx" ON "Test"("cptCode");
 CREATE INDEX "Test_categoryId_isActive_idx" ON "Test"("categoryId", "isActive");
 
 -- CreateIndex
-CREATE INDEX "Test_slug_idx" ON "Test"("slug");
+CREATE UNIQUE INDEX "Test_name_categoryId_key" ON "Test"("name", "categoryId");
 
 -- CreateIndex
 CREATE INDEX "TestComponent_componentTestId_idx" ON "TestComponent"("componentTestId");
+
+-- CreateIndex
+CREATE INDEX "TestComponent_panelId_sortOrder_idx" ON "TestComponent"("panelId", "sortOrder");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TestComponent_panelId_componentTestId_key" ON "TestComponent"("panelId", "componentTestId");
@@ -493,22 +581,40 @@ CREATE UNIQUE INDEX "Laboratory_code_key" ON "Laboratory"("code");
 CREATE INDEX "Laboratory_isActive_idx" ON "Laboratory"("isActive");
 
 -- CreateIndex
+CREATE INDEX "Laboratory_isVisibleToCustomers_idx" ON "Laboratory"("isVisibleToCustomers");
+
+-- CreateIndex
+CREATE INDEX "Laboratory_sortOrder_idx" ON "Laboratory"("sortOrder");
+
+-- CreateIndex
 CREATE INDEX "LabTest_laboratoryId_idx" ON "LabTest"("laboratoryId");
 
 -- CreateIndex
 CREATE INDEX "LabTest_isAvailable_idx" ON "LabTest"("isAvailable");
 
 -- CreateIndex
+CREATE INDEX "LabTest_isVisible_idx" ON "LabTest"("isVisible");
+
+-- CreateIndex
 CREATE INDEX "LabTest_labTestCode_idx" ON "LabTest"("labTestCode");
 
 -- CreateIndex
+CREATE INDEX "LabTest_testId_laboratoryId_isAvailable_idx" ON "LabTest"("testId", "laboratoryId", "isAvailable");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "LabTest_testId_laboratoryId_key" ON "LabTest"("testId", "laboratoryId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LabTest_laboratoryId_labTestCode_key" ON "LabTest"("laboratoryId", "labTestCode");
 
 -- CreateIndex
 CREATE INDEX "StateRestriction_stateCode_idx" ON "StateRestriction"("stateCode");
 
 -- CreateIndex
 CREATE INDEX "StateRestriction_testId_idx" ON "StateRestriction"("testId");
+
+-- CreateIndex
+CREATE INDEX "StateRestriction_laboratoryId_idx" ON "StateRestriction"("laboratoryId");
 
 -- CreateIndex
 CREATE INDEX "StateRestriction_stateCode_isActive_idx" ON "StateRestriction"("stateCode", "isActive");
@@ -526,6 +632,9 @@ CREATE INDEX "DrawCenter_zipCode_idx" ON "DrawCenter"("zipCode");
 CREATE INDEX "DrawCenter_isActive_idx" ON "DrawCenter"("isActive");
 
 -- CreateIndex
+CREATE INDEX "DrawCenter_isVisible_idx" ON "DrawCenter"("isVisible");
+
+-- CreateIndex
 CREATE INDEX "DrawCenter_latitude_longitude_idx" ON "DrawCenter"("latitude", "longitude");
 
 -- CreateIndex
@@ -538,7 +647,10 @@ CREATE INDEX "CartItem_testId_idx" ON "CartItem"("testId");
 CREATE INDEX "CartItem_laboratoryId_idx" ON "CartItem"("laboratoryId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CartItem_userId_testId_laboratoryId_key" ON "CartItem"("userId", "testId", "laboratoryId");
+CREATE INDEX "CartItem_labTestId_idx" ON "CartItem"("labTestId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CartItem_userId_labTestId_key" ON "CartItem"("userId", "labTestId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Order_orderNumber_key" ON "Order"("orderNumber");
@@ -587,6 +699,9 @@ CREATE INDEX "OrderItem_orderId_idx" ON "OrderItem"("orderId");
 
 -- CreateIndex
 CREATE INDEX "OrderItem_testId_idx" ON "OrderItem"("testId");
+
+-- CreateIndex
+CREATE INDEX "OrderItem_labTestId_idx" ON "OrderItem"("labTestId");
 
 -- CreateIndex
 CREATE INDEX "Requisition_orderId_idx" ON "Requisition"("orderId");
@@ -721,34 +836,40 @@ ALTER TABLE "TestComponent" ADD CONSTRAINT "TestComponent_panelId_fkey" FOREIGN 
 ALTER TABLE "TestComponent" ADD CONSTRAINT "TestComponent_componentTestId_fkey" FOREIGN KEY ("componentTestId") REFERENCES "Test"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LabTest" ADD CONSTRAINT "LabTest_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "LabTest" ADD CONSTRAINT "LabTest_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LabTest" ADD CONSTRAINT "LabTest_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LabTest" ADD CONSTRAINT "LabTest_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StateRestriction" ADD CONSTRAINT "StateRestriction_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DrawCenter" ADD CONSTRAINT "DrawCenter_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StateRestriction" ADD CONSTRAINT "StateRestriction_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DrawCenter" ADD CONSTRAINT "DrawCenter_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Order" ADD CONSTRAINT "Order_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_labTestId_fkey" FOREIGN KEY ("labTestId") REFERENCES "LabTest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CartItem" ADD CONSTRAINT "CartItem_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Order" ADD CONSTRAINT "Order_drawCenterId_fkey" FOREIGN KEY ("drawCenterId") REFERENCES "DrawCenter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Order" ADD CONSTRAINT "Order_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Order" ADD CONSTRAINT "Order_drawCenterId_fkey" FOREIGN KEY ("drawCenterId") REFERENCES "DrawCenter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Order" ADD CONSTRAINT "Order_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "OrderPatient" ADD CONSTRAINT "OrderPatient_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -760,13 +881,16 @@ ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("or
 ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_labTestId_fkey" FOREIGN KEY ("labTestId") REFERENCES "LabTest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Requisition" ADD CONSTRAINT "Requisition_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Requisition" ADD CONSTRAINT "Requisition_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Requisition" ADD CONSTRAINT "Requisition_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Requisition" ADD CONSTRAINT "Requisition_laboratoryId_fkey" FOREIGN KEY ("laboratoryId") REFERENCES "Laboratory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "OrderPromoCode" ADD CONSTRAINT "OrderPromoCode_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -806,3 +930,4 @@ ALTER TABLE "PushToken" ADD CONSTRAINT "PushToken_userId_fkey" FOREIGN KEY ("use
 
 -- AddForeignKey
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

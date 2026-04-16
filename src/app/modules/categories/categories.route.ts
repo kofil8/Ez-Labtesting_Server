@@ -4,6 +4,7 @@ import validateRequest from '../../middlewares/validateRequest';
 import categoryController from './categories.controller';
 import {
   createCategorySchema,
+  getAllCategoriesSchema,
   getCategoryByIdSchema,
   updateCategorySchema,
 } from './categories.validation';
@@ -11,7 +12,7 @@ import {
 const router = Router();
 
 // Public routes
-router.get('/all', categoryController.getAllCategories);
+router.get('/all', validateRequest(getAllCategoriesSchema), categoryController.getAllCategories);
 router.get(
   '/:categoryId',
   validateRequest(getCategoryByIdSchema),
