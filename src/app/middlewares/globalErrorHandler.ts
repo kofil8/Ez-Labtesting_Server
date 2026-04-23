@@ -38,6 +38,8 @@ const GlobalErrorHandler = (error: unknown, _req: Request, res: Response, _next:
   res.status(statusCode).json({
     success: false,
     message,
+    code: error instanceof ApiError ? error.code : undefined,
+    details: error instanceof ApiError ? error.details : undefined,
     errorMessages,
     stack: config.env !== 'production' && error instanceof Error ? error.stack : undefined,
   });

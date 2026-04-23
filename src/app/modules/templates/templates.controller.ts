@@ -32,7 +32,8 @@ export const TemplatesController = {
    * Get template by ID
    */
   getTemplateById: catchAsync(async (req: Request, res: Response) => {
-    const id = asParamString(req.params.id);
+    const params = (res.locals.validatedParams as Record<string, string> | undefined) || (req.params as any);
+    const id = asParamString(params.id);
 
     const template = await TemplatesService.getTemplateById(id);
 
@@ -48,7 +49,9 @@ export const TemplatesController = {
    * Get template by type
    */
   getTemplateByType: catchAsync(async (req: Request, res: Response) => {
-    const { type } = req.params as any;
+    const { type } =
+      ((res.locals.validatedParams as Record<string, string> | undefined) ||
+        (req.params as any));
 
     const template = await TemplatesService.getTemplateByType(type);
 
@@ -80,7 +83,8 @@ export const TemplatesController = {
    * Update template
    */
   updateTemplate: catchAsync(async (req: Request, res: Response) => {
-    const id = asParamString(req.params.id);
+    const params = (res.locals.validatedParams as Record<string, string> | undefined) || (req.params as any);
+    const id = asParamString(params.id);
     const data: UpdateTemplateInput = req.body;
 
     const template = await TemplatesService.updateTemplate(id, data);
@@ -97,7 +101,8 @@ export const TemplatesController = {
    * Delete template
    */
   deleteTemplate: catchAsync(async (req: Request, res: Response) => {
-    const id = asParamString(req.params.id);
+    const params = (res.locals.validatedParams as Record<string, string> | undefined) || (req.params as any);
+    const id = asParamString(params.id);
 
     await TemplatesService.deleteTemplate(id);
 
@@ -112,7 +117,8 @@ export const TemplatesController = {
    * Test template rendering
    */
   testTemplate: catchAsync(async (req: Request, res: Response) => {
-    const id = asParamString(req.params.id);
+    const params = (res.locals.validatedParams as Record<string, string> | undefined) || (req.params as any);
+    const id = asParamString(params.id);
     const { data }: TestTemplateInput = req.body;
 
     const result = await TemplatesService.testTemplate(id, data);

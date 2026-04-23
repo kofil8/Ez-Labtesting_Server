@@ -176,8 +176,16 @@ const changePasswordInDB = async (
   };
 };
 
+const deleteProfileFromDB = async (user: any) => {
+  const existingUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!existingUser) throw new ApiError(httpStatus.BAD_REQUEST, 'User not found');
+
+  await prisma.user.delete({ where: { id: user.id } });
+};
+
 export const ProfileService = {
   getProfileFromDB,
   updateMyProfileIntoDB,
   changePasswordInDB,
+  deleteProfileFromDB,
 };

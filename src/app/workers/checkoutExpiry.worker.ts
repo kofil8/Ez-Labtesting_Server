@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { env } from '../../config/env';
 import { checkoutService } from '../modules/checkout/checkout.service';
 
-const redisUrl = new URL(env.REDIS_URL);
+const redisUrl = new URL(env.REDIS_URL || 'redis://127.0.0.1:6379');
 
 const redisConnection = {
   host: redisUrl.hostname,

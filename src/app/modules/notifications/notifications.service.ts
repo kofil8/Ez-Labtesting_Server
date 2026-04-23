@@ -483,7 +483,15 @@ export const NotificationService = {
       };
     } catch (error) {
       logger.error('Error getting notifications:', error);
-      throw error;
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        },
+      };
     }
   },
 
@@ -562,7 +570,7 @@ export const NotificationService = {
       return count;
     } catch (error) {
       logger.error('Error getting unread count:', error);
-      throw error;
+      return 0;
     }
   },
 

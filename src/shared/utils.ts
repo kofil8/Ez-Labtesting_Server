@@ -2,7 +2,6 @@ export interface PaginationOptions {
   page?: number;
   limit?: number;
   search?: string;
-  search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }

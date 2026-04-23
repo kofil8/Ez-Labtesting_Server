@@ -4,6 +4,16 @@ import { env } from './env';
 
 let io: Server;
 
+function getAllowedSocketOrigins() {
+  if (env.NODE_ENV === 'production') {
+    return [env.FRONTEND_URL];
+  }
+
+  return Array.from(
+    new Set(['http://localhost:3000', env.FRONTEND_URL].filter(Boolean)),
+  );
+}
+
 export interface SocketData {
   user: {
     id: string;
@@ -20,7 +30,7 @@ export type AuthenticatedSocket = Socket<any, any, any, SocketData>;
 export const initializeSocketIO = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
-      origin: env.FRONTEND_URL,
+      origin: getAllowedSocketOrigins(),
       credentials: true,
       methods: ['GET', 'POST'],
     },

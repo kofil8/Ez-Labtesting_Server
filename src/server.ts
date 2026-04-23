@@ -1,15 +1,13 @@
 import http from 'http';
 import app from './app';
-import {
-  startNotificationCleanup,
-  stopNotificationCleanup,
-} from './app/helpers/notificationCleanup';
-import { initializeQueueProcessors } from './app/helpers/notificationQueue.processor';
+import { stopNotificationCleanup } from './app/helpers/notificationCleanup';
 import auth from './app/middlewares/auth';
 import { initNotificationSocket } from './app/modules/notifications/notifications.socket';
 import { initOrderTrackingSocket } from './app/modules/orders/orders.socket';
-import { ensureCheckoutExpiryCron } from './app/queues/checkoutExpiry.queue';
+import { ensureResultsSyncCron } from './app/queues/resultsSync.queue';
+import { ensureStaleOrderTimeoutCron } from './app/queues/staleOrderTimeout.queue';
 import seedSuperAdmin from './app/seeding';
+import './app/workers';
 import config from './config';
 import { initializeBullBoard } from './config/bullBoard';
 import { connectDatabases, disconnectDatabases } from './config/db';
@@ -17,93 +15,49 @@ import { closeQueues, initializeQueues } from './config/queue';
 import { closeSocketIO, initializeSocketIO } from './config/socket';
 import { getFirebaseAdmin } from './lib/firebaseAdmin';
 
-// Initialize BullMQ workers
-import './app/workers';
-
 let server: http.Server | null = null;
 const PORT = Number(config.port) || 9001;
 
 async function startServer() {
   try {
-    console.log('🚀 Starting server...');
-
-    // Connect databases
     await connectDatabases();
-    console.log('📦 Databases connected');
-
-    try {
-      getFirebaseAdmin();
-      console.log('🔥 Firebase Admin initialized');
-    } catch (error) {
-      console.error('❌ Firebase Admin initialization failed:', error);
-      throw error;
-    }
-
-    // Seed super admin and notification templates
+    getFirebaseAdmin();
     await seedSuperAdmin();
 
-    // Create HTTP server and attach express app
     server = http.createServer(app);
-
-    // Initialize Socket.IO
     const io = initializeSocketIO(server);
-    console.log('⚡ Socket.IO initialized');
 
-    // Initialize Bull queues
     initializeQueues();
-    console.log('📋 Bull queues initialized');
+    await ensureStaleOrderTimeoutCron();
+    await ensureResultsSyncCron();
 
-    // Ensure repeatable checkout expiry job is scheduled on boot
-    await ensureCheckoutExpiryCron();
-    console.log('⏱️ Checkout expiry cron ensured');
-
-    // Initialize queue processors
-    initializeQueueProcessors();
-    console.log('⚙️ Queue processors initialized');
-
-    // Setup Bull Board monitoring dashboard
     const bullBoardRouter = initializeBullBoard();
     app.use('/admin/queues', auth('SUPER_ADMIN', 'ADMIN'), bullBoardRouter);
-    console.log('📊 Bull Board dashboard mounted at /admin/queues');
 
-    // Initialize notification socket events
     initNotificationSocket(io);
-    console.log('📬 Notification socket events initialized');
-
-    // Initialize order tracking socket events
     initOrderTrackingSocket(io);
-    console.log('🧪 Order tracking socket events initialized');
-
-    // Start notification cleanup job
-    startNotificationCleanup();
-    console.log('🧹 Notification cleanup job started');
 
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}/health`);
-      console.log(`📬 Real-time notifications active`);
-      console.log(`📊 Bull Board dashboard: http://localhost:${PORT}/admin/queues`);
+      console.log(`Server running on http://localhost:${PORT}/health`);
     });
-  } catch (err) {
-    console.error('Failed to start server', err);
+  } catch (error) {
+    console.error('Failed to start server', error);
     process.exit(1);
   }
 }
 
 async function gracefulShutdown(signal: string) {
-  console.log(`\n🛑 Received ${signal} — stopping server...`);
+  console.log(`Received ${signal}, shutting down`);
 
   stopNotificationCleanup();
   await closeSocketIO();
 
   if (server) {
     await new Promise<void>((resolve) => server!.close(() => resolve()));
-    console.log('🛑 HTTP server stopped');
   }
 
   await closeQueues();
   await disconnectDatabases();
-
-  console.log('✅ Graceful shutdown complete');
   process.exit(0);
 }
 

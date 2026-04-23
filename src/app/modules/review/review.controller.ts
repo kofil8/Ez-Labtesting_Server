@@ -27,6 +27,27 @@ export class ReviewController {
     });
   });
 
+  static getCurrentUserReviewForTest = catchAsync(async (req: Request, res: Response) => {
+    const testId = asParamString(req.params.testId);
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return sendResponse(res, {
+        statusCode: httpStatus.UNAUTHORIZED,
+        message: 'User not authenticated',
+        data: null,
+      });
+    }
+
+    const review = await ReviewService.getCurrentUserReviewForTest(testId, userId);
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      message: 'Current user review retrieved successfully',
+      data: review,
+    });
+  });
+
   // Get a single review
   static getReview = catchAsync(async (req: Request, res: Response) => {
     const reviewId = asParamString(req.params.reviewId);
@@ -125,7 +146,7 @@ export class ReviewController {
     sendResponse(res, {
       statusCode: httpStatus.OK,
       message: result.helpful ? 'Marked as helpful' : 'Removed helpful mark',
-      data: result.review,
+      data: result,
     });
   });
 }

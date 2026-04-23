@@ -1,19 +1,206 @@
+import { Prisma } from '@prisma/client';
 import httpStatus from 'http-status';
-import { prisma } from '../../../config/db';
+import prisma from '../../../shared/prisma';
 import ApiError from '../../errors/ApiErrors';
-import { googlePlacesService } from '../../services/google-places.service';
-import { fallbackLabCenters } from './lab-centers.seed';
 import {
-  ICreateLabCenter,
-  IGeocodeResponse,
-  ILabCenterQuery,
-  ILabCenterWithDistance,
-  IUpdateLabCenter,
-} from './lab-centers.types';
+  googlePlacesService,
+  LabCenterFromGoogle,
+  PlaceAutocompleteSuggestion,
+  PlaceDetailsResult,
+} from '../../services/google-places.service';
+import {
+  matchesProviderCode,
+  normalizeProviderCode,
+  PROVIDER_CODES,
+  PROVIDER_LABELS,
+  ProviderCode,
+} from './providers';
+import { US_STATE_CENTERS } from './us-states';
 
-// Haversine formula to calculate distance in miles
+const DEFAULT_RADIUS_MILES = 25;
+const FALLBACK_RADIUS_MILES = 100;
+const PARTNER_RESULTS_TARGET = 8;
+const MAX_RESULTS = 24;
+const NATIONWIDE_CACHE_TTL_MS = 30 * 60 * 1000;
+const NATIONWIDE_DEFAULT_PAGE = 1;
+const NATIONWIDE_DEFAULT_PAGE_SIZE = 12;
+const NATIONWIDE_MAX_PAGE_SIZE = 24;
+
+type RawLabCenterQuery = {
+  lat?: string | string[];
+  lng?: string | string[];
+  radius?: string | string[];
+  search?: string | string[];
+  type?: string | string[];
+  providerCode?: string | string[];
+  providerCodes?: string | string[];
+  status?: string | string[];
+  isActive?: string | string[];
+};
+
+type RawNationwideQuery = {
+  country?: string | string[];
+  providers?: string | string[];
+  page?: string | string[];
+  pageSize?: string | string[];
+};
+
+type LabCenterRecord = {
+  id: string;
+  name: string;
+  address: string;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  type: string;
+  hours: string | null;
+  status: string;
+  latitude: number;
+  longitude: number;
+  rating: number;
+  reviewCount: number;
+  isActive: boolean;
+  lastVerified: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  distance?: number;
+  providerCode: ProviderCode | null;
+  providerLabel: string | null;
+  source: 'database' | 'places';
+  matchType: 'partner' | 'reference';
+  selectionAllowed: boolean;
+};
+
+type NormalizedQuery = {
+  lat?: number;
+  lng?: number;
+  radius: number;
+  search: string;
+  type: string;
+  providerCodes: ProviderCode[];
+  status: string;
+  isActive?: boolean;
+};
+
+type NationwideLabGroup = {
+  stateCode: string;
+  stateName: string;
+  providerCode: ProviderCode;
+  providerLabel: string;
+  sampleLabs: ReturnType<typeof toClientPayload>[];
+  source: 'places';
+  matchType: 'reference';
+};
+
+type NationwideResult = {
+  groups: NationwideLabGroup[];
+  meta: {
+    page: number;
+    pageSize: number;
+    totalGroups: number;
+    excludedStates: string[];
+  };
+};
+
+type NationwideCacheEntry = {
+  expiresAt: number;
+  value: LabCenterRecord[];
+};
+
+const nationwideResultsCache = new Map<string, NationwideCacheEntry>();
+
+const asSingle = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+const parseNumber = (value: string | undefined): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const parsePositiveInt = (value: string | undefined, fallback: number) => {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const parseBoolean = (value: string | undefined): boolean | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value === 'true' || value === '1') {
+    return true;
+  }
+
+  if (value === 'false' || value === '0') {
+    return false;
+  }
+
+  return undefined;
+};
+
+const parseProviderCodes = (
+  primaryProviderCode: string | undefined,
+  providerCodesValue: string | undefined,
+): ProviderCode[] => {
+  const providerCodes = (providerCodesValue || '')
+    .split(',')
+    .map((value) => normalizeProviderCode(value))
+    .filter((value): value is ProviderCode => Boolean(value));
+  const primary = normalizeProviderCode(primaryProviderCode);
+
+  return [
+    ...new Set(
+      [primary, ...providerCodes].filter((value): value is ProviderCode => Boolean(value)),
+    ),
+  ];
+};
+
+const normalizeQuery = (query: RawLabCenterQuery): NormalizedQuery => {
+  const radius = parseNumber(asSingle(query.radius)) ?? DEFAULT_RADIUS_MILES;
+
+  return {
+    lat: parseNumber(asSingle(query.lat)),
+    lng: parseNumber(asSingle(query.lng)),
+    radius: Math.min(Math.max(radius, 5), FALLBACK_RADIUS_MILES),
+    search: (asSingle(query.search) || '').trim(),
+    type: (asSingle(query.type) || 'all').trim(),
+    providerCodes: parseProviderCodes(asSingle(query.providerCode), asSingle(query.providerCodes)),
+    status: (asSingle(query.status) || 'all').trim(),
+    isActive: parseBoolean(asSingle(query.isActive)),
+  };
+};
+
+const normalizeNationwideQuery = (query: RawNationwideQuery) => {
+  const country = (asSingle(query.country) || 'US').trim().toUpperCase();
+  const requestedProviders = (asSingle(query.providers) || '')
+    .split(',')
+    .map((value) => normalizeProviderCode(value))
+    .filter((value): value is ProviderCode => Boolean(value));
+
+  return {
+    country,
+    providers: requestedProviders.length > 0 ? requestedProviders : PROVIDER_CODES,
+    page: parsePositiveInt(asSingle(query.page), NATIONWIDE_DEFAULT_PAGE),
+    pageSize: Math.min(
+      parsePositiveInt(asSingle(query.pageSize), NATIONWIDE_DEFAULT_PAGE_SIZE),
+      NATIONWIDE_MAX_PAGE_SIZE,
+    ),
+  };
+};
+
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 3959; // Earth's radius in miles
+  const earthRadiusMiles = 3959;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -23,402 +210,450 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return earthRadiusMiles * c;
 };
 
-const normalizeSearchTerm = (search?: string) => {
-  if (!search) return '';
-  const trimmed = search.trim().toLowerCase();
-  if (!trimmed) return '';
-  const cityLike = trimmed.split(',')[0]?.trim();
-  return cityLike || trimmed;
-};
+const roundDistance = (distance?: number) =>
+  distance === undefined ? undefined : Math.round(distance * 10) / 10;
 
-const matchesSearchTerm = (
-  center: { name: string; address: string; type: string },
-  normalizedSearch: string,
-) => {
-  if (!normalizedSearch) return true;
-
-  const haystack = `${center.name} ${center.address} ${center.type}`.toLowerCase();
-  return haystack.includes(normalizedSearch);
-};
-
-const mergeById = (primary: ILabCenterWithDistance[], secondary: ILabCenterWithDistance[]) => {
-  const map = new Map<string, ILabCenterWithDistance>();
-  [...primary, ...secondary].forEach((center) => {
-    map.set(center.id, center);
-  });
-
-  return Array.from(map.values()).sort((a, b) => a.distance - b.distance);
-};
-
-const getFallbackCenters = (query: ILabCenterQuery): ILabCenterWithDistance[] => {
-  const { lat, lng, radius = '50', search, type, status, isActive = 'true' } = query;
-  const isActiveBool = isActive === 'true';
-  const normalizedSearch = normalizeSearchTerm(search);
-
-  let centers = fallbackLabCenters.filter((center) => center.isActive === isActiveBool);
-
-  if (type && type !== 'all') {
-    centers = centers.filter((center) => center.type === type);
+const matchesSearch = (
+  search: string,
+  values: Array<string | null | undefined>,
+): boolean => {
+  if (!search) {
+    return true;
   }
 
-  if (status && status !== 'all') {
-    centers = centers.filter((center) => center.status === status);
+  const haystack = values
+    .map((value) => (value || '').toLowerCase())
+    .join(' ');
+  const tokens = search
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1);
+
+  if (tokens.length === 0) {
+    return haystack.includes(search.toLowerCase());
   }
 
-  if (lat && lng) {
-    const latitude = parseFloat(lat);
-    const longitude = parseFloat(lng);
-    const radiusMiles = parseFloat(radius);
+  return tokens.every((token) => haystack.includes(token));
+};
 
-    // Calculate distances for ALL centers
-    const centersWithDistance = centers
-      .map((center) => ({
-        ...center,
-        distance:
-          Math.round(
-            calculateDistance(latitude, longitude, center.latitude, center.longitude) * 10,
-          ) / 10,
-      }))
-      .sort((a, b) => a.distance - b.distance);
+const matchesRequestedProviders = (
+  providerCodes: ProviderCode[],
+  values: Array<string | null | undefined>,
+): boolean => {
+  if (providerCodes.length === 0) {
+    return true;
+  }
 
-    const cityMatches = normalizedSearch
-      ? centersWithDistance.filter((center) => matchesSearchTerm(center, normalizedSearch))
-      : [];
+  return providerCodes.some((providerCode) => matchesProviderCode(providerCode, values));
+};
 
-    // First try to get labs within radius
-    const nearbyLabs = centersWithDistance.filter((center) => center.distance <= radiusMiles);
+const mapDatabaseLab = (
+  center: Prisma.DrawCenterGetPayload<{
+    include: { laboratory: true };
+  }>,
+  anchor?: { lat: number; lng: number },
+): LabCenterRecord | null => {
+  const latitude = center.latitude ? Number(center.latitude) : undefined;
+  const longitude = center.longitude ? Number(center.longitude) : undefined;
+  if (latitude === undefined || longitude === undefined) {
+    return null;
+  }
 
-    if (cityMatches.length > 0) {
-      return mergeById(cityMatches, nearbyLabs);
+  const address = [center.addressLine1, center.addressLine2, center.city, center.state, center.zipCode]
+    .filter(Boolean)
+    .join(', ');
+  const providerCode = normalizeProviderCode(center.laboratory.code);
+
+  return {
+    id: center.id,
+    name: center.name,
+    address,
+    city: center.city,
+    state: center.state,
+    zip: center.zipCode,
+    phone: center.phone || null,
+    email: null,
+    website: null,
+    type: center.appointmentRequired ? 'appointment_required' : 'draw_center',
+    hours: center.hours || null,
+    status: center.isActive ? 'Open' : 'Closed',
+    latitude,
+    longitude,
+    rating: 0,
+    reviewCount: 0,
+    isActive: center.isActive,
+    lastVerified: center.updatedAt,
+    createdAt: center.createdAt,
+    updatedAt: center.updatedAt,
+    distance: anchor
+      ? roundDistance(calculateDistance(anchor.lat, anchor.lng, latitude, longitude))
+      : undefined,
+    providerCode,
+    providerLabel: providerCode
+      ? center.laboratory.displayName || PROVIDER_LABELS[providerCode]
+      : center.laboratory.displayName || center.laboratory.name,
+    source: 'database',
+    matchType: 'partner',
+    selectionAllowed: true,
+  };
+};
+
+const mapGoogleLab = (
+  lab: LabCenterFromGoogle,
+  providerCode: ProviderCode | null = null,
+): LabCenterRecord => ({
+  id: lab.id,
+  name: lab.name,
+  address: lab.address,
+  city: null,
+  state: null,
+  zip: null,
+  phone: lab.phone,
+  email: lab.email,
+  website: lab.website,
+  type: lab.type,
+  hours: lab.hours,
+  status: lab.status,
+  latitude: lab.latitude,
+  longitude: lab.longitude,
+  rating: lab.rating,
+  reviewCount: lab.reviewCount,
+  isActive: lab.isActive,
+  lastVerified: lab.lastVerified,
+  createdAt: lab.createdAt,
+  updatedAt: lab.updatedAt,
+  distance: roundDistance(lab.distance),
+  providerCode,
+  providerLabel: providerCode ? PROVIDER_LABELS[providerCode] : null,
+  source: 'places',
+  matchType: 'reference',
+  selectionAllowed: true,
+});
+
+const sortByDistance = (labs: LabCenterRecord[]) =>
+  [...labs].sort((a, b) => {
+    const aDistance = a.distance ?? Number.MAX_SAFE_INTEGER;
+    const bDistance = b.distance ?? Number.MAX_SAFE_INTEGER;
+    if (aDistance !== bDistance) {
+      return aDistance - bDistance;
     }
 
-    // If labs found within radius, return them; otherwise return ALL labs sorted by distance
-    return nearbyLabs.length > 0 ? nearbyLabs : centersWithDistance;
-  }
-
-  if (normalizedSearch) {
-    centers = centers.filter((center) => matchesSearchTerm(center, normalizedSearch));
-  }
-
-  return centers
-    .map((center) => ({
-      ...center,
-      distance: 0,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-};
-
-// Get lab centers with distance filtering - prioritize Google Places API for real-time data
-const getLabCentersDB = async (query: ILabCenterQuery): Promise<ILabCenterWithDistance[]> => {
-  const { lat, lng, radius = '50', search, type, status, isActive = 'true' } = query;
-  const normalizedSearch = normalizeSearchTerm(search);
-
-  console.log('[LabCenterService] Query received:', {
-    lat,
-    lng,
-    radius,
-    search,
-    type,
-    status,
+    return a.name.localeCompare(b.name);
   });
 
-  // Try Google Places API first if lat/lng provided and API is configured
-  if (lat && lng && googlePlacesService.isConfigured()) {
-    try {
-      const latitude = parseFloat(lat);
-      const longitude = parseFloat(lng);
-      const radiusMiles = parseFloat(radius);
+const mergeUniqueLabs = (primary: LabCenterRecord[], secondary: LabCenterRecord[]) => {
+  const seen = new Set(primary.map((lab) => `${lab.name}|${lab.address}`.toLowerCase()));
+  const merged = [...primary];
 
-      console.log('[LabCenterService] Attempting Google Places API search...');
-      const googleResults = await googlePlacesService.searchNearbyLabs(
-        latitude,
-        longitude,
-        radiusMiles,
-      );
+  for (const lab of secondary) {
+    const dedupeKey = `${lab.name}|${lab.address}`.toLowerCase();
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
 
-      if (googleResults && googleResults.length > 0) {
-        // Convert Google Places results to ILabCenterWithDistance format
-        let results = googleResults as unknown as ILabCenterWithDistance[];
+    seen.add(dedupeKey);
+    merged.push(lab);
+  }
 
-        // Filter by status if needed
-        if (status && status !== 'all') {
-          results = results.filter((lab) => lab.status === status);
-        }
+  return merged;
+};
 
-        // Filter by type if needed
-        if (type && type !== 'all') {
-          results = results.filter((lab) => lab.type === type);
-        }
+const buildDatabaseWhere = (query: NormalizedQuery): Prisma.DrawCenterWhereInput => {
+  const where: Prisma.DrawCenterWhereInput = {
+    isVisible: true,
+    laboratory: {
+      isActive: true,
+      isVisibleToCustomers: true,
+      ...(query.providerCodes.length > 0 ? { code: { in: query.providerCodes } } : {}),
+    },
+  };
 
-        console.log(
-          `[LabCenterService] Google Places returned ${results.length} labs (filtered: ${googleResults.length})`,
-        );
-        return results;
+  if (query.isActive !== undefined) {
+    where.isActive = query.isActive;
+  } else {
+    where.isActive = true;
+  }
+
+  return where;
+};
+
+const filterPartnerLabs = (labs: LabCenterRecord[], query: NormalizedQuery) => {
+  const filtered = labs.filter((lab) => {
+    if (query.status !== 'all' && lab.status !== query.status) {
+      return false;
+    }
+
+    if (
+      query.lat !== undefined &&
+      query.lng !== undefined &&
+      lab.distance !== undefined &&
+      lab.distance > query.radius
+    ) {
+      return false;
+    }
+
+    if (query.providerCodes.length > 0 && !lab.providerCode) {
+      return false;
+    }
+
+    if (
+      query.providerCodes.length > 0 &&
+      lab.providerCode &&
+      !query.providerCodes.includes(lab.providerCode)
+    ) {
+      return false;
+    }
+
+    return matchesSearch(query.search, [
+      lab.name,
+      lab.address,
+      lab.city,
+      lab.state,
+      lab.zip,
+      lab.providerCode,
+      lab.providerLabel,
+    ]);
+  });
+
+  return sortByDistance(filtered);
+};
+
+const filterReferenceLabs = (labs: LabCenterRecord[], query: NormalizedQuery) =>
+  sortByDistance(
+    labs.filter((lab) => {
+      if (query.status !== 'all' && lab.status !== query.status) {
+        return false;
       }
-      console.log('[LabCenterService] Google Places returned no results, falling back to database');
-    } catch (error) {
-      console.error('[LabCenterService] Google Places API error:', error);
-      console.log('[LabCenterService] Falling back to database...');
-      // Fall through to database lookup
-    }
-  }
 
-  // Fallback to database
+      if (
+        query.lat !== undefined &&
+        query.lng !== undefined &&
+        lab.distance !== undefined &&
+        lab.distance > query.radius
+      ) {
+        return false;
+      }
 
-  // Build where clause
-  const whereClause: any = {
-    isActive: isActive === 'true',
-  };
+      if (!matchesRequestedProviders(query.providerCodes, [lab.name, lab.address])) {
+        return false;
+      }
 
-  // Only add type/status filter if provided AND not 'all'
-  if (type && type !== 'all') {
-    whereClause.type = type;
-    console.log('[LabCenterService] Filtering by type:', type);
-  }
+      if (!query.search) {
+        return true;
+      }
 
-  if (status && status !== 'all') {
-    whereClause.status = status;
-    console.log('[LabCenterService] Filtering by status:', status);
-  }
+      return matchesSearch(query.search, [lab.name, lab.address]);
+    }),
+  );
 
-  const totalActiveCenters = await prisma.labCenter.count({
-    where: { isActive: isActive === 'true' },
+const toClientPayload = (lab: LabCenterRecord) => ({
+  ...lab,
+  searchPreparation: {
+    normalizedText: [lab.name, lab.address, lab.city, lab.state, lab.zip, lab.providerLabel]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase(),
+    geoPoint: {
+      latitude: lab.latitude,
+      longitude: lab.longitude,
+    },
+  },
+  lastVerified: lab.lastVerified.toISOString(),
+  createdAt: lab.createdAt.toISOString(),
+  updatedAt: lab.updatedAt.toISOString(),
+});
+
+const getPartnerLabs = async (query: NormalizedQuery): Promise<LabCenterRecord[]> => {
+  const anchor =
+    query.lat !== undefined && query.lng !== undefined
+      ? { lat: query.lat, lng: query.lng }
+      : undefined;
+
+  const centers = await prisma.drawCenter.findMany({
+    where: buildDatabaseWhere(query),
+    include: {
+      laboratory: true,
+    },
+    take: 250,
   });
 
-  console.log('[LabCenterService] Total active centers in DB:', totalActiveCenters);
+  const mapped = centers
+    .map((center) => mapDatabaseLab(center, anchor))
+    .filter((center): center is LabCenterRecord => Boolean(center));
 
-  if (totalActiveCenters === 0) {
-    console.log('[LabCenterService] No DB centers found, using fallback');
-    return getFallbackCenters(query);
-  }
-
-  // If lat/lng provided, calculate distances using Haversine formula
-  if (lat && lng) {
-    const latitude = parseFloat(lat);
-    const longitude = parseFloat(lng);
-    const radiusMiles = parseFloat(radius);
-
-    console.log('[LabCenterService] Searching with location:', {
-      latitude,
-      longitude,
-      radiusMiles,
-    });
-
-    // Get all centers matching the filters
-    const allCenters = await prisma.labCenter.findMany({
-      where: whereClause,
-    });
-
-    console.log('[LabCenterService] Found DB centers:', allCenters.length);
-
-    // Calculate distances for ALL centers
-    const centersWithDistance = allCenters
-      .map((center) => ({
-        ...center,
-        distance:
-          Math.round(
-            calculateDistance(latitude, longitude, center.latitude, center.longitude) * 10,
-          ) / 10,
-      }))
-      .sort((a, b) => a.distance - b.distance);
-
-    const cityMatches = normalizedSearch
-      ? centersWithDistance.filter((center) => matchesSearchTerm(center, normalizedSearch))
-      : [];
-
-    // First try to get labs within radius
-    const nearbyLabs = centersWithDistance.filter((center) => center.distance <= radiusMiles);
-
-    if (cityMatches.length > 0) {
-      const merged = mergeById(cityMatches, nearbyLabs);
-      console.log('[LabCenterService] Found city + nearby labs:', merged.length);
-      return merged;
-    }
-
-    // If labs found within radius, return them; otherwise return ALL labs sorted by distance
-    if (nearbyLabs.length > 0) {
-      console.log('[LabCenterService] Found nearby labs:', nearbyLabs.length);
-      return nearbyLabs;
-    } else {
-      console.log('[LabCenterService] No nearby labs, returning all sorted by distance');
-      return centersWithDistance;
-    }
-  }
-
-  // No location provided, return all active centers
-  console.log('[LabCenterService] No location provided, returning all centers');
-  let centers = await prisma.labCenter.findMany({
-    where: whereClause,
-    orderBy: { name: 'asc' },
-  });
-
-  if (normalizedSearch) {
-    centers = centers.filter((center) => matchesSearchTerm(center, normalizedSearch));
-  }
-
-  return centers.map((center) => ({
-    ...center,
-    distance: 0,
-  }));
+  return filterPartnerLabs(mapped, query);
 };
 
-// Get single lab center by ID
-const getLabCenterByIdDB = async (id: string): Promise<ILabCenterWithDistance> => {
-  const labCenter = await prisma.labCenter.findUnique({
-    where: { id },
-  });
-
-  if (!labCenter) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Lab center not found');
+const getFallbackReferenceLabs = async (query: NormalizedQuery): Promise<LabCenterRecord[]> => {
+  if (query.lat === undefined || query.lng === undefined || !googlePlacesService.isConfigured()) {
+    return [];
   }
 
-  return {
-    ...labCenter,
-    distance: 0,
-  };
+  const googleLabs =
+    query.providerCodes.length > 0
+      ? (
+          await Promise.all(
+            query.providerCodes.map((providerCode) =>
+              googlePlacesService.searchNearbyLabs(query.lat!, query.lng!, query.radius, {
+                providerCode,
+              }),
+            ),
+          )
+        ).flatMap((labs, index) =>
+          labs.map((lab) => mapGoogleLab(lab, query.providerCodes[index])),
+        )
+      : (await googlePlacesService.searchNearbyLabs(query.lat, query.lng, query.radius)).map((lab) =>
+          mapGoogleLab(lab),
+        );
+
+  return filterReferenceLabs(mergeUniqueLabs([], googleLabs), query);
 };
 
-// Create new lab center (admin only)
-const createLabCenterInDB = async (data: ICreateLabCenter): Promise<ILabCenterWithDistance> => {
-  const labCenter = await prisma.labCenter.create({
-    data: {
-      ...data,
-      lastVerified: new Date(),
+const getExcludedNationwideStates = async (): Promise<string[]> => {
+  const restrictions = await prisma.stateRestriction.findMany({
+    where: {
+      isActive: true,
+      restrictionType: { in: ['BLOCKED', 'REQUIRES_PHYSICIAN'] },
+    },
+    select: {
+      stateCode: true,
     },
   });
 
+  return [...new Set(restrictions.map((restriction) => restriction.stateCode))].sort();
+};
+
+const getNationwideCacheKey = (providerCode: ProviderCode, stateCode: string) =>
+  `${providerCode}|${stateCode}`;
+
+const getNationwideReferenceLabs = async (
+  providerCode: ProviderCode,
+  stateCode: string,
+): Promise<LabCenterRecord[]> => {
+  const cacheKey = getNationwideCacheKey(providerCode, stateCode);
+  const cached = nationwideResultsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  if (!googlePlacesService.isConfigured()) {
+    return [];
+  }
+
+  const state = US_STATE_CENTERS.find((entry) => entry.code === stateCode);
+  if (!state) {
+    return [];
+  }
+
+  const labs = (
+    await googlePlacesService.searchNearbyLabs(state.latitude, state.longitude, FALLBACK_RADIUS_MILES, {
+      providerCode,
+    })
+  )
+    .map((lab) => ({
+      ...mapGoogleLab(lab, providerCode),
+      selectionAllowed: false,
+    }))
+    .slice(0, 3);
+
+  nationwideResultsCache.set(cacheKey, {
+    expiresAt: Date.now() + NATIONWIDE_CACHE_TTL_MS,
+    value: labs,
+  });
+
+  return labs;
+};
+
+const getLabCenters = async (rawQuery: RawLabCenterQuery) => {
+  const query = normalizeQuery(rawQuery);
+  const partnerLabs = await getPartnerLabs(query);
+
+  let labs = partnerLabs;
+  if (partnerLabs.length < PARTNER_RESULTS_TARGET) {
+    try {
+      const referenceLabs = await getFallbackReferenceLabs(query);
+      labs = mergeUniqueLabs(partnerLabs, referenceLabs);
+    } catch {
+      labs = partnerLabs;
+    }
+  }
+
+  return labs.slice(0, MAX_RESULTS).map(toClientPayload);
+};
+
+const getNationwideLabCenters = async (rawQuery: RawNationwideQuery): Promise<NationwideResult> => {
+  const query = normalizeNationwideQuery(rawQuery);
+
+  if (query.country !== 'US' && query.country !== 'USA') {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Only US nationwide search is supported');
+  }
+
+  const excludedStates = await getExcludedNationwideStates();
+  const allowedStates = US_STATE_CENTERS.filter((state) => !excludedStates.includes(state.code));
+  const pairs = query.providers.flatMap((providerCode) =>
+    allowedStates.map((state) => ({
+      providerCode,
+      stateCode: state.code,
+      stateName: state.name,
+    })),
+  );
+
+  const totalGroups = pairs.length;
+  const startIndex = (query.page - 1) * query.pageSize;
+  const pagedPairs = pairs.slice(startIndex, startIndex + query.pageSize);
+
+  const groups = await Promise.all(
+    pagedPairs.map(async (pair) => ({
+      stateCode: pair.stateCode,
+      stateName: pair.stateName,
+      providerCode: pair.providerCode,
+      providerLabel: PROVIDER_LABELS[pair.providerCode],
+      sampleLabs: (await getNationwideReferenceLabs(pair.providerCode, pair.stateCode)).map(
+        toClientPayload,
+      ),
+      source: 'places' as const,
+      matchType: 'reference' as const,
+    })),
+  );
+
   return {
-    ...labCenter,
-    distance: 0,
+    groups,
+    meta: {
+      page: query.page,
+      pageSize: query.pageSize,
+      totalGroups,
+      excludedStates,
+    },
   };
 };
 
-// Update lab center (admin only)
-const updateLabCenterInDB = async (
-  id: string,
-  data: IUpdateLabCenter,
-): Promise<ILabCenterWithDistance> => {
-  const existingCenter = await prisma.labCenter.findUnique({
-    where: { id },
-  });
-
-  if (!existingCenter) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Lab center not found');
-  }
-
-  const updatedCenter = await prisma.labCenter.update({
-    where: { id },
-    data: {
-      ...data,
-      lastVerified: data.lastVerified ? new Date(data.lastVerified) : new Date(),
-      updatedAt: new Date(),
+const getLabCenterById = async (labCenterId: string) => {
+  const drawCenter = await prisma.drawCenter.findUnique({
+    where: { id: labCenterId },
+    include: {
+      laboratory: true,
     },
   });
 
-  return {
-    ...updatedCenter,
-    distance: 0,
-  };
-};
-
-// Delete lab center (admin only)
-const deleteLabCenterFromDB = async (id: string): Promise<void> => {
-  const existingCenter = await prisma.labCenter.findUnique({
-    where: { id },
-  });
-
-  if (!existingCenter) {
+  if (!drawCenter) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Lab center not found');
   }
 
-  // Soft delete by setting isActive to false
-  await prisma.labCenter.update({
-    where: { id },
-    data: { isActive: false },
-  });
+  const mapped = mapDatabaseLab(drawCenter);
+  if (!mapped) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Lab center coordinates are unavailable');
+  }
+
+  return toClientPayload(mapped);
 };
 
-// Geocode address using Google Maps API
-const geocodeAddress = async (address: string): Promise<IGeocodeResponse> => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+const geocodeAddress = async (address: string) => googlePlacesService.geocodeAddress(address);
 
-  if (!apiKey) {
-    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Google Maps API key not configured');
-  }
-
-  // Validate and trim address
-  if (!address || address.trim().length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Address is required and cannot be empty');
-  }
-
-  try {
-    const trimmedAddress = address.trim();
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(trimmedAddress)}&key=${apiKey}`;
-
-    console.log(`[Geocoding] Attempting to geocode: "${trimmedAddress}"`);
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    console.log(`[Geocoding] Google Maps API response status: ${data.status}`);
-
-    // Check for API errors
-    if (data.status === 'REQUEST_DENIED') {
-      throw new ApiError(
-        httpStatus.INTERNAL_SERVER_ERROR,
-        'Google Maps API key is invalid or restricted',
-      );
-    }
-
-    if (data.status === 'RATE_LIMIT_EXCEEDED') {
-      throw new ApiError(
-        httpStatus.TOO_MANY_REQUESTS,
-        'Geocoding service is temporarily unavailable. Please try again later.',
-      );
-    }
-
-    if (data.status === 'ZERO_RESULTS') {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Address "${trimmedAddress}" not found. Please check the address and try again.`,
-      );
-    }
-
-    if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Unable to geocode "${trimmedAddress}". Please try a different address format (e.g., "Las Vegas, Nevada" or "90210").`,
-      );
-    }
-
-    const result = data.results[0];
-    const location = result.geometry.location;
-
-    console.log(`[Geocoding] Success: ${trimmedAddress} -> (${location.lat}, ${location.lng})`);
-
-    return {
-      latitude: location.lat,
-      longitude: location.lng,
-      formattedAddress: result.formatted_address,
-    };
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-
-    console.error('[Geocoding Error]', error);
-
-    throw new ApiError(
-      httpStatus.INTERNAL_SERVER_ERROR,
-      'Geocoding service error. Please try again later.',
-    );
-  }
-};
-
-const autocompleteLocations = async (input: string) => {
+const autocompleteLocations = async (input: string): Promise<PlaceAutocompleteSuggestion[]> => {
   if (!googlePlacesService.isConfigured()) {
     return [];
   }
@@ -426,21 +661,35 @@ const autocompleteLocations = async (input: string) => {
   return googlePlacesService.autocompleteLocations(input);
 };
 
-const getGooglePlaceDetails = async (placeId: string) => {
+const getPlaceDetails = async (placeId: string): Promise<PlaceDetailsResult | ReturnType<typeof toClientPayload>> => {
+  const drawCenter = await prisma.drawCenter.findUnique({
+    where: { id: placeId },
+    include: {
+      laboratory: true,
+    },
+  });
+
+  if (drawCenter) {
+    const mapped = mapDatabaseLab(drawCenter);
+    if (!mapped) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Lab center coordinates are unavailable');
+    }
+
+    return toClientPayload(mapped);
+  }
+
   if (!googlePlacesService.isConfigured()) {
-    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Google Places API not configured');
+    throw new ApiError(httpStatus.SERVICE_UNAVAILABLE, 'Google Places API is not configured');
   }
 
   return googlePlacesService.getPlaceDetails(placeId);
 };
 
 export const LabCenterServices = {
-  getLabCentersDB,
-  getLabCenterByIdDB,
-  createLabCenterInDB,
-  updateLabCenterInDB,
-  deleteLabCenterFromDB,
-  geocodeAddress,
   autocompleteLocations,
-  getGooglePlaceDetails,
+  geocodeAddress,
+  getLabCenterById,
+  getLabCenters,
+  getNationwideLabCenters,
+  getPlaceDetails,
 };

@@ -56,7 +56,15 @@ const envSchema = z.object({
   // Checkout session expiry
   CHECKOUT_SESSION_TTL_MIN: z.coerce.number().default(30),
   CHECKOUT_SESSION_CLEANUP_CRON: z.string().default('*/10 * * * *'),
+  STALE_ORDER_TIMEOUT_MIN: z.coerce.number().default(60),
+  STALE_ORDER_TIMEOUT_CRON: z.string().default('*/15 * * * *'),
+  ACCESS_RESULTS_SYNC_CRON: z.string().default('0 */4 * * *'),
   REQUISITION_SIGNED_URL_TTL_SECONDS: z.coerce.number().default(300),
+  ADMIN_REVIEW_EMAILS: z.string().optional().default(''),
+  IP_GEOLOOKUP_URL_TEMPLATE: z.string().default('https://ipwho.is/{ip}'),
+  IP_GEOLOOKUP_TIMEOUT_MS: z.coerce.number().default(3000),
+  PUBLIC_IP_LOOKUP_URL_TEMPLATE: z.string().default('https://api.ipify.org?format=json'),
+  PUBLIC_IP_LOOKUP_TIMEOUT_MS: z.coerce.number().default(3000),
 
   // Rate Limiting
   FCM_RATE_LIMIT: z.coerce.number().default(10000),

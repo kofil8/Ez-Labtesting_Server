@@ -27,4 +27,6 @@ router.patch(
   ProfileController.changePassword,
 );
 
+router.delete('/', auth(), ProfileController.deleteProfile);
+
 export const ProfileRouters = router;

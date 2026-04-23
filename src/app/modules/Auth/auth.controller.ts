@@ -54,7 +54,12 @@ const verifyOTP = catchAsync(async (req, res) => {
 // ---------------------------
 const loginUser = catchAsync(async (req: Request, res: Response) => {
   const forwarded = req.headers['x-forwarded-for'];
-  const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : (req.ip as string);
+  const ip: string =
+    typeof forwarded === 'string'
+      ? forwarded.split(',')[0]?.trim() || req.ip || 'unknown'
+      : Array.isArray(forwarded)
+        ? forwarded[0]?.trim() || req.ip || 'unknown'
+        : req.ip || 'unknown';
 
   const { pushToken, platform } = req.body;
 
@@ -82,6 +87,9 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
   }
 
   const { accessToken, refreshToken, user } = result;
+  if (!accessToken || !refreshToken) {
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Authentication tokens were not issued');
+  }
 
   setAuthCookies(res, { accessToken, refreshToken });
 

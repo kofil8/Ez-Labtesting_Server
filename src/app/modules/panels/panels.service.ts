@@ -46,150 +46,237 @@ const toNumber = (value: number | string | undefined): number | undefined => {
   return Number.isNaN(parsed) ? undefined : parsed;
 };
 
-const searchableFields: Array<keyof Prisma.TestPanelWhereInput> = ['name', 'description'];
+const normalizeTestIds = (value: string[] | string | undefined) =>
+  Array.isArray(value) ? value : value ? [value] : [];
 
-// ✅ CREATE PANEL WITH TESTS
-const createPanelInDB = async (payload: CreatePanelPayload, file?: Express.Multer.File) => {
-  // Coerce types coming from multipart FormData (all fields arrive as strings)
-  const testIds = Array.isArray(payload.testIds)
-    ? payload.testIds
-    : typeof payload.testIds === 'string'
-      ? [payload.testIds]
-      : [];
-  const basePrice = Number(payload.basePrice);
+const normalizeBoolean = (value: boolean | string | undefined, fallback?: boolean) => {
+  if (value === undefined) return fallback;
+  if (typeof value === 'boolean') return value;
+  if (value === 'false') return false;
+  if (value === 'true') return true;
+  return fallback;
+};
+
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const ensurePanelCategoryId = async () => {
+  const category = await prisma.testCategory.findFirst({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true },
+  });
+
+  if (!category) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Create a test category before creating panels');
+  }
+
+  return category.id;
+};
+
+const ensureComponentTestsExist = async (testIds: string[]) => {
+  if (!testIds.length) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'At least one component test is required');
+  }
+
+  const tests = await prisma.test.findMany({
+    where: { id: { in: testIds }, isActive: true, isPanel: false },
+    select: { id: true },
+  });
+
+  if (tests.length !== testIds.length) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'One or more component tests are invalid');
+  }
+};
+
+const panelSelect = {
+  id: true,
+  name: true,
+  description: true,
+  testImageUrl: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+  panelComponents: {
+    orderBy: { sortOrder: 'asc' as const },
+    select: {
+      sortOrder: true,
+      componentTest: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          testImageUrl: true,
+          labTests: {
+            where: {
+              isAvailable: true,
+              isVisible: true,
+              laboratory: {
+                isActive: true,
+                isVisibleToCustomers: true,
+              },
+            },
+            orderBy: [{ salePrice: 'asc' as const }, { retailPrice: 'asc' as const }],
+            take: 1,
+            select: {
+              labTestCode: true,
+              retailPrice: true,
+              salePrice: true,
+            },
+          },
+        },
+      },
+    },
+  },
+  labTests: {
+    where: {
+      isAvailable: true,
+      isVisible: true,
+      laboratory: {
+        isActive: true,
+        isVisibleToCustomers: true,
+      },
+    },
+    orderBy: [{ salePrice: 'asc' as const }, { retailPrice: 'asc' as const }],
+    take: 1,
+    select: {
+      retailPrice: true,
+      salePrice: true,
+    },
+  },
+} satisfies Prisma.TestSelect;
+
+const formatPanelResponse = (panel: Prisma.TestGetPayload<{ select: typeof panelSelect }>) => {
+  const tests = panel.panelComponents.map((item) => {
+    const priceSource = item.componentTest.labTests[0];
+    const price = Number(priceSource?.salePrice ?? priceSource?.retailPrice ?? 0);
+
+    return {
+      id: item.componentTest.id,
+      testCode: priceSource?.labTestCode || item.componentTest.slug,
+      testName: item.componentTest.name,
+      price,
+      testImage: item.componentTest.testImageUrl ?? undefined,
+      description: item.componentTest.description ?? undefined,
+      sortOrder: item.sortOrder,
+    };
+  });
+
+  const basePrice = Number(
+    tests.reduce((sum, test) => sum + (Number.isFinite(test.price) ? test.price : 0), 0),
+  );
+  const bundlePrice = Number(
+    panel.labTests[0]?.salePrice ?? panel.labTests[0]?.retailPrice ?? basePrice,
+  );
   const discountPercent =
-    payload.discountPercent !== undefined ? Number(payload.discountPercent) : 0;
-  const isActive =
-    payload.isActive === undefined
-      ? true
-      : payload.isActive === 'false' || payload.isActive === false
-        ? false
-        : Boolean(payload.isActive);
+    basePrice > 0 ? Math.max(0, Number((((basePrice - bundlePrice) / basePrice) * 100).toFixed(2))) : 0;
 
-  const panelName = (payload.name ?? '').toString().trim();
-  if (!panelName) {
+  return {
+    id: panel.id,
+    name: panel.name,
+    description: panel.description ?? undefined,
+    panelImage: panel.testImageUrl ?? null,
+    basePrice,
+    discountPercent,
+    bundlePrice,
+    isActive: panel.isActive,
+    testsCount: tests.length,
+    tests,
+    createdAt: panel.createdAt,
+    updatedAt: panel.updatedAt,
+  };
+};
+
+const createPanelInDB = async (payload: CreatePanelPayload, file?: Express.Multer.File) => {
+  const testIds = normalizeTestIds(payload.testIds);
+  await ensureComponentTestsExist(testIds);
+
+  const name = payload.name.trim();
+  if (!name) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Panel name is required');
   }
 
-  if (isNaN(basePrice) || basePrice <= 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'basePrice must be a positive number');
-  }
+  const categoryId = await ensurePanelCategoryId();
+  const baseSlug = slugify(name) || `panel-${Date.now()}`;
+  const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
-  // Verify all tests exist
-  const testsCount = await prisma.test.count({
-    where: { id: { in: testIds } },
+  const created = await prisma.$transaction(async (tx) => {
+    const panel = await tx.test.create({
+      data: {
+        name,
+        slug,
+        description: payload.description ?? null,
+        testImageUrl: file ? (file as any).location : null,
+        categoryId,
+        isPanel: true,
+        isActive: normalizeBoolean(payload.isActive, true) ?? true,
+      },
+      select: { id: true },
+    });
+
+    await tx.testComponent.createMany({
+      data: testIds.map((testId, index) => ({
+        panelId: panel.id,
+        componentTestId: testId,
+        sortOrder: index,
+      })),
+    });
+
+    return tx.test.findUniqueOrThrow({
+      where: { id: panel.id },
+      select: panelSelect,
+    });
   });
 
-  if (testsCount !== testIds.length) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'One or more test IDs do not exist');
-  }
-
-  const panelImage = file ? (file as any).location : null;
-
-  // Create panel with tests
-  const panel = await prisma.testPanel.create({
-    data: {
-      name: panelName,
-      description: payload.description,
-      panelImage,
-      basePrice,
-      discountPercent,
-      isActive,
-      startsAt: payload.startsAt ? new Date(payload.startsAt) : null,
-      endsAt: payload.endsAt ? new Date(payload.endsAt) : null,
-      tests: {
-        createMany: {
-          data: testIds.map((testId, index) => ({
-            testId,
-            sortOrder: index,
-          })),
-        },
-      },
-    },
-    include: {
-      tests: {
-        include: {
-          test: true,
-        },
-        orderBy: { sortOrder: 'asc' },
-      },
-    },
-  });
-
-  return formatPanelResponse(panel);
+  return formatPanelResponse(created);
 };
 
-// ✅ GET ALL PANELS WITH FILTERS
 const getPanelsDB = async (query: GetPanelsQuery = {}) => {
-  const { search, isActive, minPrice, maxPrice, ...rest } = query;
-
   const pagination = calculatePagination({
-    ...rest,
-    page: toNumber(rest.page as any),
-    limit: toNumber(rest.limit as any),
+    page: toNumber(query.page),
+    limit: toNumber(query.limit),
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
   });
 
-  const andConditions: Prisma.TestPanelWhereInput[] = [];
+  const where: Prisma.TestWhereInput = {
+    isPanel: true,
+  };
 
-  // Search term
-  if (search) {
-    andConditions.push({
-      OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ] as Prisma.TestPanelWhereInput[],
-    });
+  if (query.search?.trim()) {
+    where.OR = [
+      { name: { contains: query.search.trim(), mode: 'insensitive' } },
+      { description: { contains: query.search.trim(), mode: 'insensitive' } },
+    ];
   }
 
-  // Active status filter
-  if (isActive !== undefined) {
-    const isActiveBool = isActive === 'true' || isActive === true;
-    andConditions.push({ isActive: isActiveBool });
+  if (query.isActive !== undefined) {
+    where.isActive = normalizeBoolean(query.isActive, true);
   }
 
-  // Price filters
-  const minPriceNum = toNumber(minPrice as any);
-  const maxPriceNum = toNumber(maxPrice as any);
+  const [panels, total] = await Promise.all([
+    prisma.test.findMany({
+      where,
+      select: panelSelect,
+      skip: pagination.skip,
+      take: pagination.limit,
+      orderBy: { [pagination.sortBy]: pagination.sortOrder },
+    }),
+    prisma.test.count({ where }),
+  ]);
 
-  if (minPriceNum !== undefined) {
-    andConditions.push({
-      basePrice: { gte: minPriceNum },
-    });
-  }
-
-  if (maxPriceNum !== undefined) {
-    andConditions.push({
-      basePrice: { lte: maxPriceNum },
-    });
-  }
-
-  const whereConditions: Prisma.TestPanelWhereInput =
-    andConditions.length > 0 ? { AND: andConditions } : {};
-
-  // Get total count
-  const total = await prisma.testPanel.count({
-    where: whereConditions,
+  const formattedPanels = panels.map(formatPanelResponse).filter((panel) => {
+    const minPrice = toNumber(query.minPrice);
+    const maxPrice = toNumber(query.maxPrice);
+    if (minPrice !== undefined && panel.bundlePrice < minPrice) return false;
+    if (maxPrice !== undefined && panel.bundlePrice > maxPrice) return false;
+    return true;
   });
-
-  // Get panels
-  const panels = await prisma.testPanel.findMany({
-    where: whereConditions,
-    include: {
-      tests: {
-        include: {
-          test: true,
-        },
-        orderBy: { sortOrder: 'asc' },
-      },
-    },
-    skip: pagination.skip,
-    take: pagination.limit,
-    orderBy: {
-      [pagination.sortBy]: pagination.sortOrder,
-    },
-  });
-
-  const formattedPanels = panels.map((panel) => formatPanelResponse(panel));
 
   return {
     data: formattedPanels,
@@ -201,18 +288,13 @@ const getPanelsDB = async (query: GetPanelsQuery = {}) => {
   };
 };
 
-// ✅ GET PANEL BY ID
 const getPanelByIdDB = async (panelId: string) => {
-  const panel = await prisma.testPanel.findUnique({
-    where: { id: panelId },
-    include: {
-      tests: {
-        include: {
-          test: true,
-        },
-        orderBy: { sortOrder: 'asc' },
-      },
+  const panel = await prisma.test.findFirst({
+    where: {
+      id: panelId,
+      isPanel: true,
     },
+    select: panelSelect,
   });
 
   if (!panel) {
@@ -222,173 +304,129 @@ const getPanelByIdDB = async (panelId: string) => {
   return formatPanelResponse(panel);
 };
 
-// ✅ UPDATE PANEL
 const updatePanelInDB = async (
   panelId: string,
   payload: UpdatePanelPayload,
   file?: Express.Multer.File,
 ) => {
-  // Check panel exists
-  const existingPanel = await prisma.testPanel.findUnique({
-    where: { id: panelId },
+  const existingPanel = await prisma.test.findFirst({
+    where: { id: panelId, isPanel: true },
+    select: { id: true, testImageUrl: true },
   });
 
   if (!existingPanel) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Panel not found');
   }
 
-  // Handle image replacement
-  let panelImage: string | null | undefined = undefined;
-  if (file) {
-    if (existingPanel.panelImage) {
-      try {
-        await deleteFile(existingPanel.panelImage);
-      } catch (_) {}
-    }
-    panelImage = (file as any).location;
+  if (file && existingPanel.testImageUrl) {
+    try {
+      await deleteFile(existingPanel.testImageUrl);
+    } catch {}
   }
 
-  // Coerce types coming from multipart FormData
-  const testIds = payload.testIds
-    ? Array.isArray(payload.testIds)
-      ? payload.testIds
-      : [payload.testIds as unknown as string]
-    : undefined;
-  const basePrice = payload.basePrice !== undefined ? Number(payload.basePrice) : undefined;
-  const discountPercent =
-    payload.discountPercent !== undefined ? Number(payload.discountPercent) : undefined;
-  const isActive =
-    payload.isActive === undefined
-      ? undefined
-      : payload.isActive === 'false' || payload.isActive === false
-        ? false
-        : Boolean(payload.isActive);
-
-  // Validate name if provided
-  let nameToSet: string | undefined = undefined;
-  if (payload.name !== undefined) {
-    const trimmed = (payload.name ?? '').toString().trim();
-    if (trimmed.length === 0) {
-      throw new ApiError(httpStatus.BAD_REQUEST, 'Panel name cannot be empty');
-    }
-    nameToSet = trimmed;
+  const testIds = payload.testIds ? normalizeTestIds(payload.testIds) : undefined;
+  if (testIds) {
+    await ensureComponentTestsExist(testIds);
   }
 
-  // Verify tests if provided
-  if (testIds && testIds.length > 0) {
-    const testsCount = await prisma.test.count({
-      where: { id: { in: testIds } },
-    });
-
-    if (testsCount !== testIds.length) {
-      throw new ApiError(httpStatus.BAD_REQUEST, 'One or more test IDs do not exist');
-    }
-
-    // Delete old relationships and create new ones
-    await prisma.panelTest.deleteMany({
-      where: { panelId },
-    });
-
-    await prisma.panelTest.createMany({
-      data: testIds.map((testId, index) => ({
-        panelId,
-        testId,
-        sortOrder: index,
-      })),
-    });
-  }
-
-  // Update panel
-  const updated = await prisma.testPanel.update({
-    where: { id: panelId },
-    data: {
-      ...(nameToSet !== undefined && { name: nameToSet }),
-      ...(payload.description !== undefined && { description: payload.description }),
-      ...(panelImage !== undefined && { panelImage }),
-      ...(basePrice !== undefined && !isNaN(basePrice) && { basePrice }),
-      ...(discountPercent !== undefined && !isNaN(discountPercent) && { discountPercent }),
-      ...(isActive !== undefined && { isActive }),
-      ...(payload.startsAt !== undefined && {
-        startsAt: payload.startsAt ? new Date(payload.startsAt) : null,
-      }),
-      ...(payload.endsAt !== undefined && {
-        endsAt: payload.endsAt ? new Date(payload.endsAt) : null,
-      }),
-    },
-    include: {
-      tests: {
-        include: {
-          test: true,
-        },
-        orderBy: { sortOrder: 'asc' },
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.test.update({
+      where: { id: panelId },
+      data: {
+        ...(payload.name !== undefined ? { name: payload.name.trim() } : {}),
+        ...(payload.description !== undefined ? { description: payload.description ?? null } : {}),
+        ...(payload.isActive !== undefined
+          ? { isActive: normalizeBoolean(payload.isActive, true) ?? true }
+          : {}),
+        ...(file ? { testImageUrl: (file as any).location } : {}),
       },
-    },
+    });
+
+    if (testIds) {
+      await tx.testComponent.deleteMany({ where: { panelId } });
+      await tx.testComponent.createMany({
+        data: testIds.map((testId, index) => ({
+          panelId,
+          componentTestId: testId,
+          sortOrder: index,
+        })),
+      });
+    }
+
+    return tx.test.findUniqueOrThrow({
+      where: { id: panelId },
+      select: panelSelect,
+    });
   });
 
   return formatPanelResponse(updated);
 };
 
-// ✅ DELETE PANEL
 const deletePanelFromDB = async (panelId: string) => {
-  const panel = await prisma.testPanel.findUnique({
-    where: { id: panelId },
-  });
-
-  if (!panel) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Panel not found');
-  }
-
-  // Delete panel image from S3 if present
-  if (panel.panelImage) {
-    try {
-      await deleteFile(panel.panelImage);
-    } catch (_) {}
-  }
-
-  // Delete panel (cascade will handle panelTest records)
-  const deleted = await prisma.testPanel.delete({
-    where: { id: panelId },
-    include: {
-      tests: {
-        include: {
-          test: true,
+  const existingPanel = await prisma.test.findFirst({
+    where: { id: panelId, isPanel: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      testImageUrl: true,
+      categoryId: true,
+      shortDescription: true,
+      createdAt: true,
+      _count: {
+        select: {
+          cartItems: true,
+          orderItems: true,
+          componentOfPanels: true,
         },
       },
     },
   });
 
-  return formatPanelResponse(deleted);
-};
+  if (!existingPanel) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Panel not found');
+  }
 
-// Helper function to format panel response
-const formatPanelResponse = (panel: any) => {
-  const bundlePrice = panel.basePrice * (1 - panel.discountPercent / 100);
+  if (existingPanel.testImageUrl) {
+    try {
+      await deleteFile(existingPanel.testImageUrl);
+    } catch {}
+  }
+
+  if (
+    existingPanel._count.cartItems > 0 ||
+    existingPanel._count.orderItems > 0 ||
+    existingPanel._count.componentOfPanels > 0
+  ) {
+    await prisma.test.update({
+      where: { id: panelId },
+      data: { isActive: false },
+    });
+
+    return {
+      id: existingPanel.id,
+      name: existingPanel.name,
+      slug: existingPanel.slug,
+      categoryId: existingPanel.categoryId,
+      shortDescription: existingPanel.shortDescription,
+      testImageUrl: existingPanel.testImageUrl,
+      deletedAt: new Date(),
+      mode: 'soft-delete',
+    };
+  }
+
+  const deleted = await prisma.test.delete({ where: { id: panelId } });
 
   return {
-    id: panel.id,
-    name: panel.name,
-    description: panel.description,
-    panelImage: panel.panelImage ?? null,
-    basePrice: panel.basePrice,
-    discountPercent: panel.discountPercent,
-    bundlePrice: parseFloat(bundlePrice.toFixed(2)),
-    isActive: panel.isActive,
-    startsAt: panel.startsAt,
-    endsAt: panel.endsAt,
-    testsCount: panel.tests?.length || 0,
-    tests: panel.tests
-      ? panel.tests.map((pt: any) => ({
-          id: pt.test.id,
-          testCode: pt.test.testCode,
-          testName: pt.test.testName,
-          price: pt.test.price,
-          testImage: pt.test.testImage,
-          description: pt.test.description,
-          sortOrder: pt.sortOrder,
-        }))
-      : [],
-    createdAt: panel.createdAt,
-    updatedAt: panel.updatedAt,
+    id: deleted.id,
+    name: deleted.name,
+    slug: deleted.slug,
+    categoryId: deleted.categoryId,
+    shortDescription: deleted.shortDescription,
+    testImageUrl: deleted.testImageUrl,
+    deletedAt: new Date(),
+    createdAt: deleted.createdAt,
+    mode: 'hard-delete',
   };
 };
 

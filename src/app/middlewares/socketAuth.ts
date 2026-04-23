@@ -4,16 +4,60 @@ import config from '../../config';
 import { prisma } from '../../shared/prisma';
 import { jwtHelpers } from '../utils/jwtHelpers';
 
+function parseCookieHeader(headerValue?: string) {
+  const cookies: Record<string, string> = {};
+
+  if (!headerValue) {
+    return cookies;
+  }
+
+  for (const segment of headerValue.split(';')) {
+    const [rawName, ...rawValueParts] = segment.trim().split('=');
+    if (!rawName) {
+      continue;
+    }
+
+    cookies[rawName] = decodeURIComponent(rawValueParts.join('=') || '');
+  }
+
+  return cookies;
+}
+
+function extractSocketToken(socket: Socket) {
+  const handshakeAuthToken = socket.handshake.auth.token;
+  if (typeof handshakeAuthToken === 'string' && handshakeAuthToken.trim()) {
+    return handshakeAuthToken.trim();
+  }
+
+  const queryToken = socket.handshake.query.token;
+  if (typeof queryToken === 'string' && queryToken.trim()) {
+    return queryToken.trim();
+  }
+
+  const authorizationHeader = socket.handshake.headers.authorization;
+  if (typeof authorizationHeader === 'string' && authorizationHeader.startsWith('Bearer ')) {
+    return authorizationHeader.slice('Bearer '.length).trim();
+  }
+
+  const cookies = parseCookieHeader(socket.handshake.headers.cookie);
+  if (typeof cookies.accessToken === 'string' && cookies.accessToken.trim()) {
+    return cookies.accessToken.trim();
+  }
+
+  return null;
+}
+
 /**
  * Socket.IO authentication middleware
  * Verifies JWT token and attaches user data to socket
  */
 export const socketAuth = async (socket: Socket, next: (err?: ExtendedError) => void) => {
   try {
-    // Extract token from handshake auth or query
-    const token = socket.handshake.auth.token || socket.handshake.query.token;
+    // Browser clients use cookie-based sessions, while non-browser clients may
+    // still provide a bearer token explicitly via auth/query/header.
+    const token = extractSocketToken(socket);
 
-    if (!token || typeof token !== 'string') {
+    if (!token) {
       return next(new Error('Authentication failed: No token provided'));
     }
 

@@ -14,8 +14,13 @@
     "test": "jest --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:studio": "npx prisma studio",
     "seed:categories": "ts-node -r tsconfig-paths/register prisma/seed-categories.ts",
+    "seed:labs": "ts-node -r tsconfig-paths/register prisma/seed-labs.ts",
     "seed:users": "ts-node -r tsconfig-paths/register prisma/seed-user.ts",
+    "seed:tests": "ts-node -r tsconfig-paths/register prisma/seed-tests.ts",
+    "seed:labtests": "ts-node -r tsconfig-paths/register prisma/seed-labtests.ts",
+    "seed:all": "npm run seed:categories && npm run seed:labs && npm run seed:tests && npm run seed:labtests && npm run seed:users",
     "s3:migrate": "ts-node -r tsconfig-paths/register src/scripts/migrate-to-s3.ts"
   },
   "dependencies": {

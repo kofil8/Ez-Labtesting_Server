@@ -9,6 +9,12 @@ export const createTicketBodySchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
 });
 
+export const createManualReviewTicketBodySchema = z.object({
+  orderId: z.string().uuid(),
+  reason: z.string().trim().min(3).max(500),
+  notes: z.string().trim().max(5000).optional(),
+});
+
 export const addMessageBodySchema = z.object({
   message: z.string().trim().min(1).max(5000),
 });
@@ -29,6 +35,7 @@ export const getTicketsQuerySchema = z.object({
 });
 
 export type CreateTicketBody = z.infer<typeof createTicketBodySchema>;
+export type CreateManualReviewTicketBody = z.infer<typeof createManualReviewTicketBodySchema>;
 export type AddMessageBody = z.infer<typeof addMessageBodySchema>;
 export type UpdateStatusBody = z.infer<typeof updateStatusBodySchema>;
 export type TicketParams = z.infer<typeof ticketParamsSchema>;
@@ -45,9 +52,9 @@ const validateBody =
   };
 
 const validateQuery =
-  (schema: z.ZodTypeAny) => async (req: Request, _res: Response, next: NextFunction) => {
+  (schema: z.ZodTypeAny) => async (req: Request, res: Response, next: NextFunction) => {
     try {
-      req.query = (await schema.parseAsync(req.query ?? {})) as any;
+      res.locals.validatedQuery = (await schema.parseAsync(req.query ?? {})) as any;
       return next();
     } catch (error) {
       return next(error);
@@ -55,9 +62,9 @@ const validateQuery =
   };
 
 const validateParams =
-  (schema: z.ZodTypeAny) => async (req: Request, _res: Response, next: NextFunction) => {
+  (schema: z.ZodTypeAny) => async (req: Request, res: Response, next: NextFunction) => {
     try {
-      req.params = (await schema.parseAsync(req.params ?? {})) as any;
+      res.locals.validatedParams = (await schema.parseAsync(req.params ?? {})) as any;
       return next();
     } catch (error) {
       return next(error);
@@ -65,6 +72,7 @@ const validateParams =
   };
 
 export const validateCreateTicket = validateBody(createTicketBodySchema);
+export const validateCreateManualReviewTicket = validateBody(createManualReviewTicketBodySchema);
 export const validateAddMessage = validateBody(addMessageBodySchema);
 export const validateUpdateStatus = validateBody(updateStatusBodySchema);
 export const validateTicketParams = validateParams(ticketParamsSchema);

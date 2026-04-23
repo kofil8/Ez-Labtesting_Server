@@ -30,7 +30,7 @@ const validateParams =
   (schema: z.ZodTypeAny) => async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = await schema.parseAsync(req.params ?? {});
-      req.params = parsed as any;
+      res.locals.validatedParams = parsed;
       return next();
     } catch (err) {
       return next(err);

@@ -1,8 +1,18 @@
 import httpStatus from 'http-status';
+import {
+  SupportTicketReasonCode,
+  SupportCategory,
+  SupportPriority,
+  SupportSenderType,
+  SupportTicketStatus,
+} from '@prisma/client';
 import prisma from '../../../shared/prisma';
 import ApiError from '../../errors/ApiErrors';
+import { enqueueManualReviewEmail } from '../../queues/manualReviewEmail.queue';
+import { orderService } from '../orders/orders.service';
 import {
   AddMessageBody,
+  CreateManualReviewTicketBody,
   CreateTicketBody,
   GetTicketsQuery,
   UpdateStatusBody,
@@ -11,6 +21,49 @@ import {
 const supportRoles = new Set(['ADMIN', 'SUPER_ADMIN', 'LAB_PARTNER']);
 
 const isSupportStaff = (role?: string) => supportRoles.has((role || '').toUpperCase());
+
+const toSupportCategory = (value: CreateTicketBody['category']): SupportCategory => {
+  const categoryMap: Record<CreateTicketBody['category'], SupportCategory> = {
+    billing: SupportCategory.BILLING,
+    technical: SupportCategory.TECHNICAL,
+    results: SupportCategory.RESULTS,
+    general: SupportCategory.GENERAL,
+  };
+
+  return categoryMap[value];
+};
+
+const toSupportPriority = (
+  value: CreateTicketBody['priority'] | GetTicketsQuery['priority'],
+): SupportPriority | undefined => {
+  if (!value) return undefined;
+
+  const priorityMap: Record<NonNullable<CreateTicketBody['priority']>, SupportPriority> = {
+    low: SupportPriority.LOW,
+    medium: SupportPriority.MEDIUM,
+    high: SupportPriority.HIGH,
+  };
+
+  return priorityMap[value];
+};
+
+const toSupportTicketStatus = (
+  value: UpdateStatusBody['status'] | GetTicketsQuery['status'],
+): SupportTicketStatus | undefined => {
+  if (!value) return undefined;
+
+  const statusMap: Record<NonNullable<UpdateStatusBody['status']>, SupportTicketStatus> = {
+    open: SupportTicketStatus.OPEN,
+    in_progress: SupportTicketStatus.IN_PROGRESS,
+    resolved: SupportTicketStatus.RESOLVED,
+    closed: SupportTicketStatus.CLOSED,
+  };
+
+  return statusMap[value];
+};
+
+const toSupportSenderType = (isStaff: boolean): SupportSenderType =>
+  isStaff ? SupportSenderType.ADMIN : SupportSenderType.CUSTOMER;
 
 const getResponseTarget = (priority: 'low' | 'medium' | 'high') => {
   const now = Date.now();
@@ -49,14 +102,15 @@ class SupportService {
         userId,
         orderId: payload.orderId,
         subject: payload.subject,
-        category: payload.category,
-        priority: payload.priority,
-        status: 'open',
+        category: toSupportCategory(payload.category),
+        priority: toSupportPriority(payload.priority) || SupportPriority.MEDIUM,
+        status: SupportTicketStatus.OPEN,
+        reasonCode: SupportTicketReasonCode.GENERAL_REQUEST,
         responseTarget: getResponseTarget(payload.priority),
         messages: {
           create: {
             senderId: userId,
-            senderType: isSupportStaff(role) ? 'support' : 'customer',
+            senderType: toSupportSenderType(isSupportStaff(role)),
             message: payload.message,
           },
         },
@@ -71,13 +125,95 @@ class SupportService {
     return ticket;
   }
 
+  async createManualReviewTicket(
+    userId: string,
+    role: string,
+    payload: CreateManualReviewTicketBody,
+  ) {
+    const order = await prisma.order.findUnique({
+      where: { id: payload.orderId },
+      select: {
+        id: true,
+        userId: true,
+        orderNumber: true,
+        orderStatus: true,
+        paymentStatus: true,
+        labSubmissionErrorCode: true,
+        labSubmissionErrorMessage: true,
+      },
+    });
+
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (!isSupportStaff(role) && order.userId !== userId) {
+      throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden');
+    }
+
+    if (order.orderStatus !== 'LAB_SUBMISSION_FAILED') {
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        'Manual review can only be requested after a lab submission failure',
+      );
+    }
+
+    await orderService.requestManualReview(order.id, userId, payload.notes || payload.reason);
+
+    const ticket = await prisma.supportTicket.create({
+      data: {
+        ticketNumber: createTicketNumber(),
+        userId,
+        orderId: order.id,
+        subject: `Manual review request for order ${order.orderNumber}`,
+        category: SupportCategory.ORDER,
+        priority: SupportPriority.HIGH,
+        status: SupportTicketStatus.AWAITING_ADMIN,
+        reasonCode: SupportTicketReasonCode.ADMIN_REVIEW_REQUEST,
+        notes: payload.notes || null,
+        failureContextJson: {
+          reason: payload.reason,
+          labSubmissionErrorCode: order.labSubmissionErrorCode,
+          labSubmissionErrorMessage: order.labSubmissionErrorMessage,
+          orderStatus: order.orderStatus,
+          paymentStatus: order.paymentStatus,
+        },
+        manualReviewRequestedAt: new Date(),
+        responseTarget: getResponseTarget('high'),
+        messages: {
+          create: {
+            senderId: userId,
+            senderType: toSupportSenderType(isSupportStaff(role)),
+            message: payload.notes || payload.reason,
+          },
+        },
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    await enqueueManualReviewEmail({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      reason: payload.reason,
+      requestedByUserId: userId,
+    });
+
+    return ticket;
+  }
+
   async listTickets(currentUserId: string, role: string, query: GetTicketsQuery) {
     const { page = 1, limit = 20, priority, status } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {
-      ...(priority ? { priority } : {}),
-      ...(status ? { status } : {}),
+      ...(priority ? { priority: toSupportPriority(priority) } : {}),
+      ...(status ? { status: toSupportTicketStatus(status) } : {}),
     };
 
     if (!isSupportStaff(role)) {
@@ -96,7 +232,7 @@ class SupportService {
             take: 1,
           },
           order: {
-            select: { id: true, status: true, accessOrderId: true },
+            select: { id: true, orderStatus: true, paymentStatus: true, accessOrderId: true },
           },
         },
         orderBy: { updatedAt: 'desc' },
@@ -125,7 +261,13 @@ class SupportService {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
         order: {
-          select: { id: true, status: true, accessOrderId: true, requisitionPdfUrl: true },
+          select: {
+            id: true,
+            orderStatus: true,
+            paymentStatus: true,
+            accessOrderId: true,
+            requisitionPdfUrl: true,
+          },
         },
         messages: {
           orderBy: { createdAt: 'asc' },
@@ -165,7 +307,8 @@ class SupportService {
       throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden');
     }
 
-    const statusToSet = ticket.status === 'closed' ? 'in_progress' : ticket.status;
+    const statusToSet =
+      ticket.status === SupportTicketStatus.CLOSED ? SupportTicketStatus.IN_PROGRESS : ticket.status;
     const shouldSetRespondedAt = supportStaff && !ticket.respondedAt;
 
     const [message] = await prisma.$transaction([
@@ -173,7 +316,7 @@ class SupportService {
         data: {
           ticketId,
           senderId: currentUserId,
-          senderType: supportStaff ? 'support' : 'customer',
+          senderType: toSupportSenderType(supportStaff),
           message: payload.message,
         },
       }),
@@ -210,10 +353,13 @@ class SupportService {
     }
 
     const nextData: Record<string, unknown> = {
-      status: payload.status,
+      status: toSupportTicketStatus(payload.status),
     };
 
-    if (payload.status === 'resolved' || payload.status === 'closed') {
+    if (
+      payload.status === 'resolved' ||
+      payload.status === 'closed'
+    ) {
       nextData.resolvedAt = new Date();
     }
 
@@ -231,7 +377,7 @@ class SupportService {
       data: {
         ticketId,
         senderId: currentUserId,
-        senderType: 'support',
+        senderType: SupportSenderType.ADMIN,
         message: `Ticket status updated to ${payload.status}`,
       },
     });

@@ -14,6 +14,8 @@ import logger from './app/utils/logger';
 const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
 
+app.set('trust proxy', true);
+
 // 🧩 Global middlewares
 const corsOptions = {
   // Allow the Next.js dev server and any comma-separated origins in ALLOWED_ORIGINS

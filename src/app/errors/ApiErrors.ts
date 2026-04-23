@@ -1,8 +1,19 @@
 class ApiError extends Error {
   statusCode: number;
-  constructor(statusCode: number, message: string | undefined, stack = "") {
+  code?: string;
+  details?: Record<string, unknown>;
+
+  constructor(
+    statusCode: number,
+    message: string | undefined,
+    details?: Record<string, unknown>,
+    code?: string,
+    stack = "",
+  ) {
     super(message);
     this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
     if (stack) {
       this.stack = stack;
     } else {

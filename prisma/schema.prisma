@@ -78,6 +78,7 @@ model Test {
   name                    String   @db.VarChar(255)
   slug                    String   @unique @db.VarChar(280)
   description             String?
+  testImageUrl            String?  @db.VarChar(500)
   shortDescription        String?  @db.VarChar(500)
   categoryId              String   @db.Uuid
   specimenType            String?  @db.VarChar(100)
@@ -90,8 +91,8 @@ model Test {
   seoDescription          String?  @db.VarChar(500)
   searchKeywords          String[] @default([])
   requiresFasting         Boolean  @default(false)
-  minAge                  Int?     @db.SmallInt
-  maxAge                  Int?     @db.SmallInt
+  minAge                  Int?     @default(0) @db.SmallInt
+  maxAge                  Int?     @default(120) @db.SmallInt
   isActive                Boolean  @default(true)
   isPopular               Boolean  @default(false)
   createdAt               DateTime @default(now())
@@ -213,105 +214,128 @@ model StateRestriction {
 }
 
 model DrawCenter {
-  id                  String   @id @default(uuid()) @db.Uuid
-  laboratoryId        String   @db.Uuid
-  externalCenterId    String?  @db.VarChar(100)
-  name                String   @db.VarChar(255)
-  addressLine1        String   @db.VarChar(255)
-  addressLine2        String?  @db.VarChar(255)
-  city                String   @db.VarChar(100)
-  state               String   @db.Char(2)
-  zipCode             String   @db.VarChar(10)
-  latitude            Decimal? @db.Decimal(10, 7)
-  longitude           Decimal? @db.Decimal(10, 7)
-  phone               String?  @db.VarChar(20)
-  hours               String?
-  timezone            String?  @db.VarChar(50)
-  acceptsWalkIns      Boolean  @default(true)
-  appointmentRequired Boolean  @default(false)
-  isActive            Boolean  @default(true)
-  isVisible           Boolean  @default(true)
-  metadata            Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String    @id @default(uuid()) @db.Uuid
+  laboratoryId         String    @db.Uuid
+  externalCenterId     String?   @db.VarChar(100)
+  name                 String    @db.VarChar(255)
+  addressLine1         String    @db.VarChar(255)
+  addressLine2         String?   @db.VarChar(255)
+  city                 String    @db.VarChar(100)
+  state                String    @db.Char(2)
+  zipCode              String    @db.VarChar(10)
+  latitude             Decimal?  @db.Decimal(10, 7)
+  longitude            Decimal?  @db.Decimal(10, 7)
+  phone                String?   @db.VarChar(20)
+  hours                String?
+  timezone             String?   @db.VarChar(50)
+  acceptsWalkIns       Boolean   @default(true)
+  appointmentRequired  Boolean   @default(false)
+  isActive             Boolean   @default(true)
+  isVisible            Boolean   @default(true)
+  normalizedSearchText String?   @db.VarChar(1000)
+  metadata             Json?
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   laboratory Laboratory @relation(fields: [laboratoryId], references: [id])
+  cartItems  CartItem[]
   orders     Order[]
 
   @@index([laboratoryId])
+  @@index([state, city])
   @@index([state])
   @@index([zipCode])
   @@index([isActive])
   @@index([isVisible])
+  @@index([deletedAt])
   @@index([latitude, longitude])
 }
 
 model CartItem {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  testId       String   @db.Uuid
-  laboratoryId String   @db.Uuid
-  labTestId    String   @db.Uuid
-  price        Decimal  @default(0.00) @db.Decimal(10, 2)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  testId             String   @db.Uuid
+  laboratoryId       String   @db.Uuid
+  labTestId          String   @db.Uuid
+  drawCenterId       String?  @db.Uuid
+  quantity           Int      @default(1)
+  currency           String   @default("USD") @db.Char(3)
+  baseRetailPrice    Decimal  @default(0.00) @db.Decimal(10, 2)
+  effectiveUnitPrice Decimal  @default(0.00) @db.Decimal(10, 2)
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  laboratory Laboratory @relation(fields: [laboratoryId], references: [id])
-  labTest    LabTest    @relation(fields: [labTestId], references: [id])
-  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drawCenter DrawCenter? @relation(fields: [drawCenterId], references: [id])
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id])
+  labTest    LabTest     @relation(fields: [labTestId], references: [id])
+  test       Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, labTestId])
   @@index([userId])
   @@index([testId])
   @@index([laboratoryId])
   @@index([labTestId])
+  @@index([drawCenterId])
 }
 
 model Order {
-  id                     String                 @id @default(uuid()) @db.Uuid
-  userId                 String?                @db.Uuid
-  laboratoryId           String                 @db.Uuid
-  drawCenterId           String?                @db.Uuid
-  orderNumber            String                 @unique @db.VarChar(30)
-  currency               String                 @default("USD") @db.Char(3)
-  subtotal               Decimal                @default(0.00) @db.Decimal(10, 2)
-  tax                    Decimal                @default(0.00) @db.Decimal(10, 2)
-  processingFee          Decimal                @default(0.00) @db.Decimal(10, 2)
-  discount               Decimal                @default(0.00) @db.Decimal(10, 2)
-  total                  Decimal                @default(0.00) @db.Decimal(10, 2)
-  paymentStatus          PaymentStatus          @default(PENDING)
-  paymentMethodType      PaymentMethodType?
-  orderStatus            OrderStatus            @default(PENDING)
-  stripePaymentIntentId  String?                @unique
-  stripeChargeId         String?                @unique
-  stripePaymentMethodId  String?
-  accessSubmissionStatus AccessSubmissionStatus @default(NOT_SUBMITTED)
-  accessOrderId          String?                @unique
-  accessClientId         String?
-  requisitionPdfUrl      String?
-  requisitionPdfPath     String?
-  labVisitInstructions   String?
-  manualReviewRequired   Boolean                @default(false)
-  accessPayloadJson      Json?
-  accessResponseJson     Json?
-  accessErrorMessage     String?
-  customerEmailSnapshot  String?                @db.VarChar(255)
-  customerPhoneSnapshot  String?                @db.VarChar(20)
-  pricingSnapshotJson    Json?
-  paidAt                 DateTime?
-  placedAt               DateTime?
-  submittedToLabAt       DateTime?
-  labOrderPlacedAt       DateTime?
-  cancelledAt            DateTime?
-  refundAmount           Decimal?               @db.Decimal(10, 2)
-  refundReason           String?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
-  currentTrackingStep    Int                    @default(1)
-  trackingUpdatedAt      DateTime?
-  notificationsSent      String[]               @default([])
-  lastNotificationAt     DateTime?
+  id                         String                 @id @default(uuid()) @db.Uuid
+  userId                     String?                @db.Uuid
+  laboratoryId               String                 @db.Uuid
+  drawCenterId               String?                @db.Uuid
+  orderNumber                String                 @unique @db.VarChar(30)
+  currency                   String                 @default("USD") @db.Char(3)
+  subtotal                   Decimal                @default(0.00) @db.Decimal(10, 2)
+  tax                        Decimal                @default(0.00) @db.Decimal(10, 2)
+  processingFee              Decimal                @default(0.00) @db.Decimal(10, 2)
+  discount                   Decimal                @default(0.00) @db.Decimal(10, 2)
+  total                      Decimal                @default(0.00) @db.Decimal(10, 2)
+  paymentStatus              PaymentStatus          @default(PENDING)
+  paymentMethodType          PaymentMethodType?
+  orderStatus                OrderStatus            @default(PENDING_PAYMENT)
+  stripePaymentIntentId      String?                @unique
+  stripeChargeId             String?                @unique
+  stripePaymentMethodId      String?
+  accessSubmissionStatus     AccessSubmissionStatus @default(NOT_SUBMITTED)
+  accessOrderId              String?                @unique
+  accessClientId             String?
+  requisitionPdfUrl          String?
+  requisitionPdfPath         String?
+  labVisitInstructions       String?
+  manualReviewRequired       Boolean                @default(false)
+  accessPayloadJson          Json?
+  accessResponseJson         Json?
+  accessErrorMessage         String?
+  paymentSnapshotJson        Json?
+  labSubmissionPayloadJson   Json?
+  labSubmissionResponseJson  Json?
+  labSubmissionErrorCode     String?                @db.VarChar(100)
+  labSubmissionErrorMessage  String?
+  customerEmailSnapshot      String?                @db.VarChar(255)
+  customerPhoneSnapshot      String?                @db.VarChar(20)
+  pricingSnapshotJson        Json?
+  idempotencyKey             String?                @unique
+  labSubmissionAttempts      Int                    @default(0)
+  lastLabSubmissionAttemptAt DateTime?
+  lastPaymentEventId         String?                @db.VarChar(100)
+  paidAt                     DateTime?
+  placedAt                   DateTime?
+  userConfirmedAt            DateTime?
+  submittedToLabAt           DateTime?
+  labOrderPlacedAt           DateTime?
+  cancelledAt                DateTime?
+  refundAmount               Decimal?               @db.Decimal(10, 2)
+  refundReason               String?
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  currentTrackingStep        Int                    @default(1)
+  trackingUpdatedAt          DateTime?
+  notificationsSent          String[]               @default([])
+  lastNotificationAt         DateTime?
+  lastTransitionedAt         DateTime?
 
   drawCenter     DrawCenter?          @relation(fields: [drawCenterId], references: [id])
   laboratory     Laboratory           @relation(fields: [laboratoryId], references: [id])
@@ -330,6 +354,7 @@ model Order {
   @@index([paymentMethodType])
   @@index([orderStatus])
   @@index([accessSubmissionStatus])
+  @@index([manualReviewRequired])
   @@index([paidAt])
   @@index([createdAt])
 }
@@ -349,6 +374,7 @@ model OrderPatient {
   city           String?         @db.VarChar(100)
   state          String?         @db.Char(2)
   zipCode        String?         @db.VarChar(10)
+  metadata       Json?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -356,17 +382,22 @@ model OrderPatient {
 }
 
 model OrderItem {
-  id             String   @id @default(uuid()) @db.Uuid
-  orderId        String   @db.Uuid
-  testId         String   @db.Uuid
-  labTestId      String   @db.Uuid
-  labTestCode    String   @db.VarChar(50)
-  testName       String   @db.VarChar(255)
-  laboratoryName String   @db.VarChar(255)
-  price          Decimal  @default(0.00) @db.Decimal(10, 2)
-  labCost        Decimal  @default(0.00) @db.Decimal(10, 2)
-  currency       String   @default("USD") @db.Char(3)
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(uuid()) @db.Uuid
+  orderId             String   @db.Uuid
+  testId              String   @db.Uuid
+  labTestId           String   @db.Uuid
+  labTestCode         String   @db.VarChar(50)
+  testName            String   @db.VarChar(255)
+  laboratoryName      String   @db.VarChar(255)
+  quantity            Int      @default(1)
+  baseRetailPrice     Decimal  @default(0.00) @db.Decimal(10, 2)
+  effectiveUnitPrice  Decimal  @default(0.00) @db.Decimal(10, 2)
+  discountAmount      Decimal  @default(0.00) @db.Decimal(10, 2)
+  price               Decimal  @default(0.00) @db.Decimal(10, 2)
+  labCost             Decimal  @default(0.00) @db.Decimal(10, 2)
+  currency            String   @default("USD") @db.Char(3)
+  pricingSnapshotJson Json?
+  createdAt           DateTime @default(now())
 
   order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   test         Test          @relation(fields: [testId], references: [id])
@@ -379,19 +410,28 @@ model OrderItem {
 }
 
 model Requisition {
-  id                 String            @id @default(uuid()) @db.Uuid
-  orderId            String            @db.Uuid
-  orderItemId        String?           @db.Uuid
-  laboratoryId       String?           @db.Uuid
-  requisitionNumber  String?           @db.VarChar(50)
-  requisitionPdfUrl  String?           @db.VarChar(500)
-  requisitionPdfPath String?           @db.VarChar(500)
-  labOrderId         String?           @db.VarChar(100)
-  status             RequisitionStatus @default(GENERATED)
-  submittedAt        DateTime?
-  resultsReadyAt     DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                     String            @id @default(uuid()) @db.Uuid
+  orderId                String            @db.Uuid
+  orderItemId            String?           @db.Uuid
+  laboratoryId           String?           @db.Uuid
+  providerCode           String?           @db.VarChar(30)
+  requisitionNumber      String?           @db.VarChar(50)
+  requisitionPdfUrl      String?           @db.VarChar(500)
+  requisitionPdfPath     String?           @db.VarChar(500)
+  fileStorageKey         String?           @db.VarChar(500)
+  downloadFileName       String?           @db.VarChar(255)
+  labOrderId             String?           @db.VarChar(100)
+  status                 RequisitionStatus @default(PENDING)
+  rawPayloadJson         Json?
+  rawResponseJson        Json?
+  fileMetadataJson       Json?
+  drawCenterSnapshotJson Json?
+  submittedAt            DateTime?
+  readyAt                DateTime?
+  failedAt               DateTime?
+  resultsReadyAt         DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   laboratory Laboratory? @relation(fields: [laboratoryId], references: [id])
   order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -406,28 +446,42 @@ model Requisition {
 }
 
 model PromoCode {
-  id            String       @id @default(uuid()) @db.Uuid
-  code          String       @unique @db.VarChar(50)
-  discountType  DiscountType
-  discountValue Decimal      @default(0.00) @db.Decimal(10, 2)
-  minOrder      Decimal?     @db.Decimal(10, 2)
-  maxUses       Int?
-  usedCount     Int          @default(0)
-  startsAt      DateTime?
-  expiresAt     DateTime?
-  isActive      Boolean      @default(true)
+  id                  String               @id @default(uuid()) @db.Uuid
+  code                String               @unique @db.VarChar(50)
+  discountType        DiscountType
+  pricingStrategy     PromoPricingStrategy @default(PRICING_FLOOR)
+  status              PromoCodeStatus      @default(DRAFT)
+  discountValue       Decimal              @default(0.00) @db.Decimal(10, 2)
+  minOrder            Decimal?             @db.Decimal(10, 2)
+  minimumMarginAmount Decimal?             @db.Decimal(10, 2)
+  perUserLimit        Int?
+  maxUses             Int?
+  usedCount           Int                  @default(0)
+  startsAt            DateTime?
+  expiresAt           DateTime?
+  isActive            Boolean              @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   orderPromoCodes OrderPromoCode[]
 
   @@index([isActive])
   @@index([expiresAt])
+  @@index([status])
+  @@index([deletedAt])
 }
 
 model OrderPromoCode {
-  id             String  @id @default(uuid()) @db.Uuid
-  orderId        String  @db.Uuid
-  promoCodeId    String  @db.Uuid
-  discountAmount Decimal @default(0.00) @db.Decimal(10, 2)
+  id              String               @id @default(uuid()) @db.Uuid
+  orderId         String               @db.Uuid
+  promoCodeId     String               @db.Uuid
+  appliedCode     String               @db.VarChar(50)
+  discountType    DiscountType
+  discountValue   Decimal              @default(0.00) @db.Decimal(10, 2)
+  pricingStrategy PromoPricingStrategy @default(PRICING_FLOOR)
+  discountAmount  Decimal              @default(0.00) @db.Decimal(10, 2)
+  createdAt       DateTime             @default(now())
 
   order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   promoCode PromoCode @relation(fields: [promoCodeId], references: [id])
@@ -474,34 +528,46 @@ model ReviewHelpful {
 }
 
 model OrderTrackingEvent {
-  id        String   @id @default(uuid()) @db.Uuid
-  orderId   String   @db.Uuid
-  step      Int
-  status    String   @db.VarChar(50)
-  message   String?  @db.VarChar(500)
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id             String                 @id @default(uuid()) @db.Uuid
+  orderId        String                 @db.Uuid
+  step           Int                    @default(0)
+  eventType      OrderTrackingEventType
+  actorType      TrackingActorType      @default(SYSTEM)
+  actorId        String?                @db.VarChar(100)
+  previousStatus OrderStatus?
+  nextStatus     OrderStatus?
+  message        String?                @db.VarChar(500)
+  metadata       Json?
+  occurredAt     DateTime               @default(now())
+  createdAt      DateTime               @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId, createdAt])
-  @@index([step, status])
+  @@index([eventType, createdAt])
 }
 
 model SupportTicket {
-  id             String              @id @default(uuid()) @db.Uuid
-  ticketNumber   String              @unique @db.VarChar(30)
-  userId         String              @db.Uuid
-  orderId        String?             @db.Uuid
-  subject        String              @db.VarChar(200)
-  category       SupportCategory     @default(GENERAL)
-  priority       SupportPriority     @default(MEDIUM)
-  status         SupportTicketStatus @default(OPEN)
-  responseTarget DateTime
-  respondedAt    DateTime?
-  resolvedAt     DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  id                      String                  @id @default(uuid()) @db.Uuid
+  ticketNumber            String                  @unique @db.VarChar(30)
+  userId                  String                  @db.Uuid
+  orderId                 String?                 @db.Uuid
+  subject                 String                  @db.VarChar(200)
+  category                SupportCategory         @default(GENERAL)
+  priority                SupportPriority         @default(MEDIUM)
+  status                  SupportTicketStatus     @default(OPEN)
+  reasonCode              SupportTicketReasonCode @default(GENERAL_REQUEST)
+  notes                   String?
+  failureContextJson      Json?
+  assigneeUserId          String?                 @db.Uuid
+  resolvedByUserId        String?                 @db.Uuid
+  resolutionNotes         String?
+  responseTarget          DateTime
+  manualReviewRequestedAt DateTime?
+  respondedAt             DateTime?
+  resolvedAt              DateTime?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
 
   messages SupportMessage[]
   order    Order?           @relation(fields: [orderId], references: [id])
@@ -511,6 +577,7 @@ model SupportTicket {
   @@index([priority, status])
   @@index([createdAt])
   @@index([orderId])
+  @@index([reasonCode, status])
 }
 
 model SupportMessage {
@@ -659,9 +726,13 @@ enum RestrictionType {
 
 enum PaymentStatus {
   PENDING
-  PAID
+  PROCESSING
+  SUCCEEDED
   FAILED
+  CANCELLED
   REFUNDED
+  PARTIALLY_REFUNDED
+  REQUIRES_ACTION
 }
 
 enum PaymentMethodType {
@@ -670,9 +741,18 @@ enum PaymentMethodType {
 }
 
 enum OrderStatus {
-  PENDING
-  PROCESSING
-  REQUISITION_SENT
+  CART
+  PENDING_PATIENT_INFO
+  PENDING_PAYMENT
+  PAYMENT_FAILED
+  PAID
+  AWAITING_USER_CONFIRMATION
+  READY_FOR_LAB_SUBMISSION
+  LAB_SUBMISSION_IN_PROGRESS
+  LAB_SUBMISSION_FAILED
+  MANUAL_REVIEW_REQUIRED
+  SUBMITTED_TO_LAB
+  REQUISITION_READY
   COMPLETED
   CANCELLED
 }
@@ -686,11 +766,12 @@ enum AccessSubmissionStatus {
 }
 
 enum RequisitionStatus {
-  GENERATED
-  SENT_TO_LAB
-  SPECIMEN_COLLECTED
-  PROCESSING
-  RESULTS_READY
+  PENDING
+  RECEIVED
+  FILE_STORED
+  READY
+  FAILED
+  CANCELLED
 }
 
 enum DiscountType {
@@ -723,7 +804,9 @@ enum SupportPriority {
 
 enum SupportTicketStatus {
   OPEN
+  AWAITING_ADMIN
   IN_PROGRESS
+  WAITING_FOR_CUSTOMER
   RESOLVED
   CLOSED
 }
@@ -732,4 +815,48 @@ enum SupportSenderType {
   CUSTOMER
   ADMIN
   SYSTEM
+}
+
+enum PromoCodeStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+enum PromoPricingStrategy {
+  PRICING_FLOOR
+  PURE_DISCOUNT
+}
+
+enum OrderTrackingEventType {
+  CART_VALIDATED
+  ORDER_CREATED
+  PAYMENT_INTENT_CREATED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  USER_CONFIRMED_ORDER
+  LAB_SUBMISSION_STARTED
+  LAB_SUBMISSION_SUCCEEDED
+  LAB_SUBMISSION_FAILED
+  REQUISITION_CREATED
+  SUPPORT_TICKET_CREATED
+  ADMIN_RESEND_TRIGGERED
+}
+
+enum TrackingActorType {
+  CUSTOMER
+  ADMIN
+  SYSTEM
+  WORKER
+  WEBHOOK
+}
+
+enum SupportTicketReasonCode {
+  GENERAL_REQUEST
+  LAB_SUBMISSION_FAILURE
+  PAYMENT_ISSUE
+  REQUISITION_ISSUE
+  ADMIN_REVIEW_REQUEST
 }
