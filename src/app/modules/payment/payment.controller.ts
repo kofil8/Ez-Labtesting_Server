@@ -49,7 +49,7 @@ export class PaymentController {
 
       const result = await paymentService.confirmPaymentIntent(validatedData.paymentIntentId);
 
-      if (result?.metadata?.userId && result.metadata.userId !== userId) {
+      if (result?.metadata?.userId !== userId) {
         res.status(httpStatus.FORBIDDEN).json({ success: false, message: 'Forbidden' });
         return;
       }

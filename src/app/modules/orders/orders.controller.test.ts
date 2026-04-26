@@ -139,3 +139,69 @@ describe('OrderController getOrdersByUserId', () => {
     );
   });
 });
+
+describe('OrderController confirmPayment', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('rejects a payment intent that is not bound to the order', async () => {
+    (orderService.getOrderById as jest.Mock).mockResolvedValue({
+      id: 'order-1',
+      userId: 'user-1',
+      total: 94,
+    });
+    (paymentService.confirmPaymentIntent as jest.Mock).mockResolvedValue({
+      status: 'succeeded',
+      amount: 94,
+      currency: 'usd',
+      paymentMethodTypes: ['card'],
+      metadata: {
+        orderId: 'order-2',
+        userId: 'user-1',
+      },
+    });
+
+    const req: any = {
+      params: { orderId: 'order-1' },
+      body: { stripePaymentIntentId: 'pi_wrong' },
+      user: { id: 'user-1', role: 'CUSTOMER' },
+    };
+    const res = createResponse();
+
+    await orderController.confirmPayment(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(orderService.markOrderPaid).not.toHaveBeenCalled();
+  });
+
+  it('rejects an underpaid payment intent before marking the order paid', async () => {
+    (orderService.getOrderById as jest.Mock).mockResolvedValue({
+      id: 'order-1',
+      userId: 'user-1',
+      total: 94,
+    });
+    (paymentService.confirmPaymentIntent as jest.Mock).mockResolvedValue({
+      status: 'succeeded',
+      amount: 90,
+      currency: 'usd',
+      paymentMethodTypes: ['card'],
+      metadata: {
+        orderId: 'order-1',
+        userId: 'user-1',
+      },
+    });
+
+    const req: any = {
+      params: { orderId: 'order-1' },
+      body: { stripePaymentIntentId: 'pi_underpaid' },
+      user: { id: 'user-1', role: 'CUSTOMER' },
+    };
+    const res = createResponse();
+
+    await orderController.confirmPayment(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(orderService.markOrderPaid).not.toHaveBeenCalled();
+  });
+});

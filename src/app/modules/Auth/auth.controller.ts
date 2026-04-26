@@ -53,13 +53,7 @@ const verifyOTP = catchAsync(async (req, res) => {
 // LOGIN USER
 // ---------------------------
 const loginUser = catchAsync(async (req: Request, res: Response) => {
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip: string =
-    typeof forwarded === 'string'
-      ? forwarded.split(',')[0]?.trim() || req.ip || 'unknown'
-      : Array.isArray(forwarded)
-        ? forwarded[0]?.trim() || req.ip || 'unknown'
-        : req.ip || 'unknown';
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
   const { pushToken, platform } = req.body;
 

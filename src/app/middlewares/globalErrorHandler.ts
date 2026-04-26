@@ -31,8 +31,12 @@ const GlobalErrorHandler = (error: unknown, _req: Request, res: Response, _next:
     message = error.message;
     errorMessages = [{ path: '', message }];
   } else if (error instanceof Error) {
-    message = error.message;
+    message = config.env === 'production' ? 'Internal server error' : error.message;
     errorMessages = [{ path: '', message }];
+  }
+
+  if (res.headersSent) {
+    return _next(error);
   }
 
   res.status(statusCode).json({
@@ -43,8 +47,6 @@ const GlobalErrorHandler = (error: unknown, _req: Request, res: Response, _next:
     errorMessages,
     stack: config.env !== 'production' && error instanceof Error ? error.stack : undefined,
   });
-
-  _next(); // Call next to pass the error to the next middleware
 };
 
 function handleValidationError(error: Prisma.PrismaClientValidationError) {

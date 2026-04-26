@@ -1,15 +1,19 @@
-import { NotificationPriority, NotificationType } from '@prisma/client';
-import { emailQueue, fcmQueue, notificationQueue } from '../../../config/queue';
-import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
+import {
+  Notification,
+  NotificationPriority,
+  NotificationType,
+  Prisma,
+  Role,
+} from '@prisma/client';
+import { emailQueue, fcmQueue } from '../../../config/queue';
+import { getFirebaseMessaging } from '../../../lib/firebaseAdmin';
 import prisma from '../../../shared/prisma';
 import { socketManager } from '../../helpers/socketManager';
 import logger from '../../utils/logger';
 import { renderNotificationTemplate, validateTemplateData } from '../../utils/templateRenderer';
 
-const admin = getFirebaseAdmin();
-const appUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+const appUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
 
-// Priority mapping for notification types
 const priorityMapping: Record<NotificationType, NotificationPriority> = {
   ORDER_CREATED: 'MEDIUM',
   ORDER_CONFIRMED: 'HIGH',
@@ -29,10 +33,14 @@ const priorityMapping: Record<NotificationType, NotificationPriority> = {
   WELCOME: 'MEDIUM',
   ACCOUNT_VERIFIED: 'HIGH',
   PASSWORD_RESET: 'HIGH',
+  PAYMENT_SUCCEEDED: 'HIGH',
+  PAYMENT_FAILED: 'HIGH',
+  REQUISITION_READY: 'HIGH',
+  LAB_SUBMISSION_FAILED: 'HIGH',
+  MANUAL_REVIEW_REQUIRED: 'HIGH',
 };
 
-// Email critical types - always send email
-const emailCriticalTypes: NotificationType[] = [
+const emailCriticalTypes = new Set<NotificationType>([
   'ORDER_CONFIRMED',
   'ORDER_COMPLETED',
   'RESULTS_READY',
@@ -42,7 +50,18 @@ const emailCriticalTypes: NotificationType[] = [
   'SYSTEM_ALERT',
   'ACCOUNT_VERIFIED',
   'PASSWORD_RESET',
-];
+  'PAYMENT_FAILED',
+  'LAB_SUBMISSION_FAILED',
+  'MANUAL_REVIEW_REQUIRED',
+]);
+
+const invalidFcmTokenCodes = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+  'messaging/invalid-argument',
+]);
+
+type NotificationData = Record<string, any>;
 
 export interface OrderNotification {
   orderId: string;
@@ -63,10 +82,164 @@ export interface DiscountNotification {
   [key: string]: any;
 }
 
+type RenderedEmail = {
+  subject: string;
+  html: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, any> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const toRecord = (value: Prisma.JsonValue | null | undefined): NotificationData =>
+  isRecord(value) ? { ...value } : {};
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const normalizeFcmValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const stringifyFcmData = (data: NotificationData): Record<string, string> => {
+  const serialized: Record<string, string> = {};
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (value !== undefined) {
+      serialized[key] = normalizeFcmValue(value);
+    }
+  });
+
+  return serialized;
+};
+
+const buildDefaultClickAction = (type: NotificationType, data: NotificationData) => {
+  const existing = data.clickAction;
+  if (typeof existing === 'string' && existing.trim()) {
+    return existing;
+  }
+
+  const orderId =
+    typeof data.orderUuid === 'string'
+      ? data.orderUuid
+      : typeof data.orderId === 'string'
+        ? data.orderId
+        : null;
+  if (
+    orderId &&
+    [
+      'ORDER_CREATED',
+      'ORDER_CONFIRMED',
+      'ORDER_CANCELLED',
+      'ORDER_COMPLETED',
+      'ORDER_IN_PROGRESS',
+      'RESULTS_READY',
+      'RESULTS_ABNORMAL',
+      'PAYMENT_SUCCEEDED',
+      'PAYMENT_FAILED',
+      'REQUISITION_READY',
+      'LAB_SUBMISSION_FAILED',
+      'MANUAL_REVIEW_REQUIRED',
+    ].includes(type)
+  ) {
+    return `/results/${orderId}`;
+  }
+
+  return '/dashboard';
+};
+
+const formatNotificationPayload = (notification: Notification) => ({
+  id: notification.id,
+  userId: notification.userId,
+  type: notification.type,
+  title: notification.title,
+  body: notification.body,
+  data: toRecord(notification.data),
+  priority: notification.priority,
+  isRead: notification.isRead,
+  readAt: notification.readAt,
+  createdAt: notification.createdAt,
+  sentAt: notification.sentAt,
+});
+
+const buildFcmData = (notification: Notification): Record<string, string> => {
+  const data = toRecord(notification.data);
+  const clickAction = buildDefaultClickAction(notification.type, data);
+
+  return stringifyFcmData({
+    ...data,
+    notificationId: notification.id,
+    userId: notification.userId,
+    type: notification.type,
+    priority: notification.priority,
+    clickAction,
+    createdAt: notification.createdAt.toISOString(),
+    sentAt: notification.sentAt.toISOString(),
+  });
+};
+
+const buildCustomEmail = (title: string, body: string): RenderedEmail => ({
+  subject: title,
+  html: `<p>${escapeHtml(body || title)}</p>`,
+});
+
+const getJobPriority = (priority: NotificationPriority) =>
+  priority === 'HIGH' ? 1 : priority === 'LOW' ? 3 : 2;
+
+const addDeliveredVia = async (notificationId: string, channel: string) => {
+  const existing = await prisma.notification.findUnique({
+    where: { id: notificationId },
+    select: { deliveredVia: true },
+  });
+
+  if (!existing || existing.deliveredVia.includes(channel)) {
+    return;
+  }
+
+  await prisma.notification.update({
+    where: { id: notificationId },
+    data: {
+      deliveredVia: [...existing.deliveredVia, channel],
+    },
+  });
+};
+
+const getTemplateVariables = (variables: Prisma.JsonValue): any[] => {
+  if (Array.isArray(variables)) {
+    return variables;
+  }
+
+  if (typeof variables === 'string') {
+    try {
+      const parsed = JSON.parse(variables);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+};
+
 export const NotificationService = {
-  /* -------------------------------------------------------
-     REGISTER TOKEN
-  ------------------------------------------------------- */
+  formatNotificationPayload,
+  buildFcmData,
+
   async registerToken(userId: string, token: string, platform = 'web') {
     return prisma.pushToken.upsert({
       where: { token },
@@ -84,9 +257,6 @@ export const NotificationService = {
     });
   },
 
-  /* -------------------------------------------------------
-     UNREGISTER TOKEN
-  ------------------------------------------------------- */
   async unregisterToken(userId: string, token: string) {
     return prisma.pushToken.updateMany({
       where: { userId, token },
@@ -94,14 +264,14 @@ export const NotificationService = {
     });
   },
 
-  /* -------------------------------------------------------
-     SEND TO A SINGLE TOKEN (Legacy)
-  ------------------------------------------------------- */
   async sendToToken(token: string, title: string, body: string, data: Record<string, string> = {}) {
     const message = {
       token,
       notification: { title, body },
-      data,
+      data: stringifyFcmData({
+        ...data,
+        clickAction: data.clickAction || '/dashboard',
+      }),
       webpush: {
         notification: {
           title,
@@ -109,21 +279,16 @@ export const NotificationService = {
           icon: '/logo.png',
         },
         fcmOptions: {
-          link: `${appUrl}/account/notifications`,
+          link: `${appUrl}${data.clickAction || '/dashboard'}`,
         },
       },
     };
 
     try {
-      const response = await admin.messaging().send(message);
+      const response = await getFirebaseMessaging().send(message);
       return { success: true, response };
     } catch (error: any) {
-      const code = error?.code;
-
-      if (
-        code === 'messaging/registration-token-not-registered' ||
-        code === 'messaging/invalid-registration-token'
-      ) {
+      if (invalidFcmTokenCodes.has(error?.code)) {
         await prisma.pushToken.updateMany({
           where: { token },
           data: { revoked: true },
@@ -135,313 +300,215 @@ export const NotificationService = {
     }
   },
 
-  /* -------------------------------------------------------
-     SEND TO ALL DEVICES OF A USER (Legacy)
-  ------------------------------------------------------- */
-  async sendToUser(userId: string, title: string, body: string, data: Record<string, string> = {}) {
-    const tokens = await prisma.pushToken.findMany({
-      where: { userId, revoked: false },
-    });
-
-    if (!tokens.length) {
-      return { success: false, message: 'No tokens found' };
-    }
-
-    const tokenList = tokens.map((t) => t.token);
-
-    const multicastMessage = {
-      tokens: tokenList,
-      notification: { title, body },
+  async sendToUser(userId: string, title: string, body: string, data: Record<string, any> = {}) {
+    const notification = await this.sendCustomNotification(
+      userId,
+      'ADMIN_ANNOUNCEMENT',
+      title,
+      body,
       data,
-      webpush: {
-        notification: {
-          title,
-          body,
-          icon: '/logo.png',
-        },
-        fcmOptions: {
-          link: `${appUrl}/account/notifications`,
-        },
-      },
-    };
-
-    const response = await admin.messaging().sendEachForMulticast(multicastMessage);
-
-    const invalidTokens: string[] = [];
-
-    response.responses.forEach((resp, index) => {
-      if (!resp.success) {
-        const errCode = (resp.error as any)?.code;
-
-        if (
-          errCode === 'messaging/registration-token-not-registered' ||
-          errCode === 'messaging/invalid-registration-token' ||
-          errCode === 'messaging/invalid-argument'
-        ) {
-          invalidTokens.push(tokenList[index]);
-        }
-      }
-    });
-
-    if (invalidTokens.length) {
-      await prisma.pushToken.updateMany({
-        where: { token: { in: invalidTokens } },
-        data: { revoked: true },
-      });
-    }
+    );
 
     return {
       success: true,
-      successCount: response.successCount,
-      failureCount: response.failureCount,
+      notification: formatNotificationPayload(notification),
     };
   },
 
-  /* -------------------------------------------------------
-     CREATE NOTIFICATION
-  ------------------------------------------------------- */
   async createNotification(
     userId: string,
     type: NotificationType,
     title: string,
     body: string,
-    data?: Record<string, any>,
+    data?: NotificationData,
   ) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
 
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      const expiryDate = new Date();
-      if (user.role === 'CUSTOMER') {
-        expiryDate.setDate(expiryDate.getDate() + 90);
-      } else {
-        expiryDate.setDate(expiryDate.getDate() + 365);
-      }
-
-      const priority = priorityMapping[type] || 'MEDIUM';
-
-      const notification = await prisma.notification.create({
-        data: {
-          userId,
-          type,
-          title,
-          body,
-          data: data ?? undefined,
-          priority,
-          expiresAt: expiryDate,
-        },
-      });
-
-      return notification;
-    } catch (error) {
-      logger.error('Error creating notification:', error);
-      throw error;
+    if (!user) {
+      throw new Error('User not found');
     }
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + (user.role === Role.CUSTOMER ? 90 : 365));
+
+    return prisma.notification.create({
+      data: {
+        userId,
+        type,
+        title,
+        body,
+        data: data === undefined ? undefined : (data as Prisma.InputJsonValue),
+        priority: priorityMapping[type] || 'MEDIUM',
+        expiresAt,
+      },
+    });
   },
 
-  /* -------------------------------------------------------
-     SEND NOTIFICATION (Full workflow)
-  ------------------------------------------------------- */
+  async dispatchNotification(notification: Notification, email?: RenderedEmail | null) {
+    const payload = formatNotificationPayload(notification);
+    const socketDelivered = socketManager.emitToUser(notification.userId, 'notification:new', payload);
+
+    if (socketDelivered) {
+      await addDeliveredVia(notification.id, 'socket');
+
+      const unreadCount = await this.getUnreadCount(notification.userId);
+      socketManager.emitToUser(notification.userId, 'notification:count-update', {
+        unreadCount,
+      });
+    }
+
+    const tokens = await prisma.pushToken.findMany({
+      where: { userId: notification.userId, revoked: false },
+      select: { token: true },
+    });
+
+    const fcmData = buildFcmData(notification);
+    await Promise.all(
+      tokens.map(({ token }) =>
+        fcmQueue.add(
+          {
+            token,
+            notificationId: notification.id,
+            userId: notification.userId,
+            type: notification.type,
+            notification: {
+              title: notification.title,
+              body: notification.body,
+            },
+            data: fcmData,
+          },
+          {
+            priority: getJobPriority(notification.priority),
+            attempts: 3,
+          },
+        ),
+      ),
+    );
+
+    if (emailCriticalTypes.has(notification.type) && email) {
+      const user = await prisma.user.findUnique({
+        where: { id: notification.userId },
+        select: { email: true },
+      });
+
+      if (user?.email) {
+        await emailQueue.add(
+          {
+            to: user.email,
+            subject: email.subject,
+            html: email.html,
+            notificationId: notification.id,
+          },
+          {
+            priority: 1,
+            attempts: 3,
+          },
+        );
+      }
+    }
+
+    return notification;
+  },
+
+  async sendTemplateNotification(
+    userId: string,
+    type: NotificationType,
+    templateData: NotificationData = {},
+  ) {
+    const template = await prisma.notificationTemplate.findUnique({
+      where: { type },
+    });
+
+    if (!template || !template.isActive) {
+      throw new Error(`Notification template not found or inactive: ${type}`);
+    }
+
+    const templateVars = getTemplateVariables(template.variables);
+    const validation = validateTemplateData(templateData, templateVars);
+    if (!validation.valid) {
+      logger.warn(
+        `Missing template variables for ${type}: ${validation.missingVariables.join(', ')}`,
+      );
+    }
+
+    const rendered = renderNotificationTemplate(template, templateData);
+    const notification = await this.createNotification(
+      userId,
+      type,
+      rendered.pushTitle,
+      rendered.pushBody,
+      templateData,
+    );
+
+    await this.dispatchNotification(notification, {
+      subject: rendered.emailSubject,
+      html: rendered.emailBody,
+    });
+
+    logger.info(`Notification dispatched: ${type} to user ${userId}`);
+    return notification;
+  },
+
+  async sendCustomNotification(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    body: string,
+    data: NotificationData = {},
+    email?: RenderedEmail | null,
+  ) {
+    const notification = await this.createNotification(userId, type, title, body, data);
+    await this.dispatchNotification(notification, email || buildCustomEmail(title, body));
+    logger.info(`Custom notification dispatched: ${type} to user ${userId}`);
+    return notification;
+  },
+
   async sendNotification(
     userId: string,
     type: NotificationType,
-    templateData: Record<string, any> = {},
+    templateData: NotificationData = {},
   ) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { email: true, role: true },
-      });
-
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      const template = await prisma.notificationTemplate.findUnique({
-        where: { type },
-      });
-
-      if (!template || !template.isActive) {
-        throw new Error(`Notification template not found or inactive: ${type}`);
-      }
-
-      let templateVars: any[] = [];
-      if (Array.isArray(template.variables)) {
-        templateVars = template.variables;
-      } else if (typeof template.variables === 'string') {
-        try {
-          templateVars = JSON.parse(template.variables);
-        } catch {
-          templateVars = [];
-        }
-      }
-
-      const validation = validateTemplateData(templateData, templateVars);
-      if (!validation.valid) {
-        logger.warn(
-          `Missing template variables for ${type}: ${validation.missingVariables.join(', ')}`,
-        );
-      }
-
-      const rendered = renderNotificationTemplate(template, templateData);
-
-      const notification = await this.createNotification(
-        userId,
-        type,
-        rendered.pushTitle,
-        rendered.pushBody,
-        templateData,
-      );
-
-      const priority = priorityMapping[type] || 'MEDIUM';
-      const isCritical = emailCriticalTypes.includes(type);
-      const isOnline = socketManager.isUserOnline(userId);
-
-      if (isOnline) {
-        socketManager.emitToUser(userId, 'notification:new', {
-          id: notification.id,
-          type,
-          title: rendered.pushTitle,
-          body: rendered.pushBody,
-          data: templateData,
-          priority,
-        });
-
-        const unreadCount = await this.getUnreadCount(userId);
-        socketManager.emitToUser(userId, 'notification:count-update', {
-          unreadCount,
-        });
-
-        await prisma.notification.update({
-          where: { id: notification.id },
-          data: {
-            deliveredVia: ['socket'],
-          },
-        });
-      }
-
-      if (!isOnline) {
-        const tokens = await prisma.pushToken.findMany({
-          where: { userId, revoked: false },
-        });
-
-        if (tokens.length > 0) {
-          for (const token of tokens) {
-            const jobData = {
-              token: token.token,
-              notification: {
-                title: rendered.pushTitle,
-                body: rendered.pushBody,
-              },
-              data: templateData,
-            };
-            const jobOptions = {
-              priority: priority === 'HIGH' ? 1 : priority === 'LOW' ? 3 : 2,
-              attempts: 3,
-            };
-            await fcmQueue.add(jobData, jobOptions);
-          }
-        }
-      }
-
-      if (isCritical || priority === 'HIGH') {
-        const emailJobData = {
-          to: user.email,
-          subject: rendered.emailSubject,
-          html: rendered.emailBody,
-        };
-        const emailJobOptions = {
-          priority: 1,
-          attempts: 3,
-        };
-        await emailQueue.add(emailJobData, emailJobOptions);
-      }
-
-      logger.info(`✅ Notification sent: ${type} to user ${userId}`);
-
-      return notification;
-    } catch (error) {
-      logger.error('Error sending notification:', error);
-      throw error;
-    }
+    return this.sendTemplateNotification(userId, type, templateData);
   },
 
-  /* -------------------------------------------------------
-     SEND BULK NOTIFICATION (Admin broadcast)
-  ------------------------------------------------------- */
   async sendBulkNotification(
     type: NotificationType,
-    templateData: Record<string, any> = {},
+    templateData: NotificationData = {},
     targetRoles?: string[],
   ) {
-    try {
-      const template = await prisma.notificationTemplate.findUnique({
-        where: { type },
-      });
+    const users = await prisma.user.findMany({
+      where: targetRoles?.length ? { role: { in: targetRoles as Role[] } } : undefined,
+      select: { id: true },
+    });
 
-      if (!template || !template.isActive) {
-        throw new Error(`Template not found or inactive: ${type}`);
-      }
+    logger.info(`Sending bulk notification ${type} to ${users.length} users`);
 
-      const rendered = renderNotificationTemplate(template, templateData);
+    const batchSize = 50;
+    let sentCount = 0;
 
-      const users = await prisma.user.findMany({
-        where: targetRoles ? { role: { in: targetRoles as any } } : undefined,
-        select: { id: true, email: true },
-      });
+    for (let i = 0; i < users.length; i += batchSize) {
+      const batch = users.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map((user) => this.sendTemplateNotification(user.id, type, templateData)),
+      );
 
-      logger.info(`📢 Sending bulk notification ${type} to ${users.length} users`);
-
-      const batchSize = 100;
-      let sentCount = 0;
-
-      for (let i = 0; i < users.length; i += batchSize) {
-        const batch = users.slice(i, i + batchSize);
-
-        const jobs = batch.map((user) => {
-          const notifJobData = {
-            userId: user.id,
-            notificationId: '',
-            type,
-            title: rendered.pushTitle,
-            body: rendered.pushBody,
-            data: templateData,
-            priority: 'LOW' as const,
-          };
-          const notifJobOptions = {
-            priority: 3,
-            attempts: 3,
-            delay: i * 100,
-          };
-          return notificationQueue.add(notifJobData, notifJobOptions);
-        });
-
-        await Promise.all(jobs);
-        sentCount += batch.length;
-
-        logger.info(`📢 Queued ${sentCount}/${users.length} notifications`);
-      }
-
-      return {
-        success: true,
-        totalQueued: sentCount,
-        type,
-      };
-    } catch (error) {
-      logger.error('Error sending bulk notification:', error);
-      throw error;
+      sentCount += results.filter((result) => result.status === 'fulfilled').length;
+      results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .forEach((result) => logger.error('Bulk notification failed:', result.reason));
     }
+
+    return {
+      success: true,
+      totalQueued: sentCount,
+      totalUsers: users.length,
+      type,
+    };
   },
 
-  /* -------------------------------------------------------
-     GET NOTIFICATIONS (with pagination)
-  ------------------------------------------------------- */
   async getNotifications(
     userId: string,
     page: number = 1,
@@ -451,178 +518,130 @@ export const NotificationService = {
       isRead?: boolean;
     },
   ) {
-    try {
-      const skip = (page - 1) * limit;
+    const skip = (page - 1) * limit;
+    const where: Prisma.NotificationWhereInput = {
+      userId,
+      expiresAt: { gt: new Date() },
+    };
 
-      const where: any = {
-        userId,
-        expiresAt: { gt: new Date() },
-      };
+    if (filters?.type) where.type = filters.type;
+    if (filters?.isRead !== undefined) where.isRead = filters.isRead;
 
-      if (filters?.type) where.type = filters.type;
-      if (filters?.isRead !== undefined) where.isRead = filters.isRead;
+    const [notifications, total] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.notification.count({ where }),
+    ]);
 
-      const [notifications, total] = await Promise.all([
-        prisma.notification.findMany({
-          where,
-          orderBy: { createdAt: 'desc' },
-          skip,
-          take: limit,
-        }),
-        prisma.notification.count({ where }),
-      ]);
-
-      return {
-        data: notifications,
-        meta: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-        },
-      };
-    } catch (error) {
-      logger.error('Error getting notifications:', error);
-      return {
-        data: [],
-        meta: {
-          total: 0,
-          page,
-          limit,
-          totalPages: 0,
-        },
-      };
-    }
+    return {
+      data: notifications.map(formatNotificationPayload),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   },
 
-  /* -------------------------------------------------------
-     MARK AS READ
-  ------------------------------------------------------- */
   async markAsRead(userId: string, notificationId: string) {
-    try {
-      const existing = await prisma.notification.findFirst({
-        where: { id: notificationId, userId },
-      });
+    const existing = await prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
 
-      if (!existing) {
-        throw new Error('Notification not found or unauthorized');
-      }
-
-      const notification = await prisma.notification.update({
-        where: { id: notificationId },
-        data: {
-          isRead: true,
-          readAt: new Date(),
-        },
-      });
-
-      socketManager.emitToUser(userId, 'notification:read', {
-        id: notificationId,
-      });
-
-      const unreadCount = await this.getUnreadCount(userId);
-      socketManager.emitToUser(userId, 'notification:count-update', {
-        unreadCount,
-      });
-
-      return notification;
-    } catch (error) {
-      logger.error('Error marking notification as read:', error);
-      throw error;
+    if (!existing) {
+      throw new Error('Notification not found or unauthorized');
     }
+
+    const notification = await prisma.notification.update({
+      where: { id: notificationId },
+      data: {
+        isRead: true,
+        readAt: new Date(),
+      },
+    });
+
+    socketManager.emitToUser(userId, 'notification:read', {
+      id: notificationId,
+    });
+
+    const unreadCount = await this.getUnreadCount(userId);
+    socketManager.emitToUser(userId, 'notification:count-update', {
+      unreadCount,
+    });
+
+    return formatNotificationPayload(notification);
   },
 
-  /* -------------------------------------------------------
-     MARK ALL AS READ
-  ------------------------------------------------------- */
   async markAllAsRead(userId: string) {
-    try {
-      await prisma.notification.updateMany({
-        where: { userId, isRead: false },
-        data: { isRead: true, readAt: new Date() },
-      });
+    await prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
 
-      socketManager.emitToUser(userId, 'notification:count-update', {
-        unreadCount: 0,
-      });
+    socketManager.emitToUser(userId, 'notification:count-update', {
+      unreadCount: 0,
+    });
 
-      logger.info(`✅ All notifications marked as read for user ${userId}`);
-      return { success: true };
-    } catch (error) {
-      logger.error('Error marking all as read:', error);
-      throw error;
-    }
+    return { success: true };
   },
 
-  /* -------------------------------------------------------
-     GET UNREAD COUNT
-  ------------------------------------------------------- */
   async getUnreadCount(userId: string) {
-    try {
-      const count = await prisma.notification.count({
-        where: {
-          userId,
-          isRead: false,
-          expiresAt: { gt: new Date() },
-        },
-      });
-
-      return count;
-    } catch (error) {
-      logger.error('Error getting unread count:', error);
-      return 0;
-    }
+    return prisma.notification.count({
+      where: {
+        userId,
+        isRead: false,
+        expiresAt: { gt: new Date() },
+      },
+    });
   },
 
-  /* -------------------------------------------------------
-     DELETE NOTIFICATION
-  ------------------------------------------------------- */
   async deleteNotification(userId: string, notificationId: string) {
-    try {
-      const notification = await prisma.notification.findUnique({
-        where: { id: notificationId },
-      });
+    const notification = await prisma.notification.findUnique({
+      where: { id: notificationId },
+    });
 
-      if (!notification || notification.userId !== userId) {
-        throw new Error('Unauthorized');
-      }
-
-      await prisma.notification.delete({
-        where: { id: notificationId },
-      });
-
-      const unreadCount = await this.getUnreadCount(userId);
-      socketManager.emitToUser(userId, 'notification:count-update', {
-        unreadCount,
-      });
-
-      return { success: true };
-    } catch (error) {
-      logger.error('Error deleting notification:', error);
-      throw error;
+    if (!notification || notification.userId !== userId) {
+      throw new Error('Unauthorized');
     }
+
+    await prisma.notification.delete({
+      where: { id: notificationId },
+    });
+
+    const unreadCount = await this.getUnreadCount(userId);
+    socketManager.emitToUser(userId, 'notification:count-update', {
+      unreadCount,
+    });
+
+    return { success: true };
   },
 
-  /* -------------------------------------------------------
-     HELPER METHODS
-  ------------------------------------------------------- */
   async sendOrderNotification(userId: string, data: OrderNotification) {
-    return this.sendNotification(userId, 'ORDER_CREATED', data);
+    return this.sendTemplateNotification(userId, 'ORDER_CREATED', data);
   },
 
   async sendDiscountNotification(userId: string, data: DiscountNotification) {
-    return this.sendNotification(userId, 'NEW_DISCOUNT', data);
+    return this.sendTemplateNotification(userId, 'NEW_DISCOUNT', data);
   },
 
   async sendLabCenterNotification(
     userId: string,
     type: 'LAB_CENTER_UPDATED' | 'LAB_CENTER_CLOSED',
-    data: Record<string, any>,
+    data: NotificationData,
   ) {
-    return this.sendNotification(userId, type, data);
+    return this.sendTemplateNotification(userId, type, data);
   },
 
-  async sendSystemAlert(userId: string, data: Record<string, any>) {
-    return this.sendNotification(userId, 'SYSTEM_ALERT', data);
+  async sendSystemAlert(userId: string, data: NotificationData) {
+    return this.sendTemplateNotification(userId, 'SYSTEM_ALERT', data);
+  },
+
+  async sendResultsReady(userId: string, data: NotificationData) {
+    return this.sendTemplateNotification(userId, 'RESULTS_READY', data);
   },
 };

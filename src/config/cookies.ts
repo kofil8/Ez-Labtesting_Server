@@ -2,22 +2,25 @@ import { CookieOptions } from 'express';
 import config from './index';
 import { parseExpiryToMs, parseExpiryToSeconds } from '../app/utils/tokenExpiry';
 
-const getHostname = (value?: string | null) => {
-  if (!value) {
-    return null;
-  }
+const isProd = process.env.NODE_ENV === 'production';
+const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || (isProd ? '.ezlabtesting.com' : undefined);
 
-  try {
-    return new URL(value).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
+const parseBoolean = (value: string | undefined, fallback: boolean) => {
+  if (value === undefined) return fallback;
+  return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
 };
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-const backendHostname = getHostname(config.backend_base_url);
-const isLocalBackend = backendHostname ? LOOPBACK_HOSTS.has(backendHostname) : false;
-const isProd = process.env.NODE_ENV === 'production' && !isLocalBackend;
+const parseSameSite = (value: string | undefined): CookieOptions['sameSite'] => {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'strict' || normalized === 'none') {
+    return normalized;
+  }
+
+  return 'lax';
+};
+
+const sameSite = parseSameSite(process.env.COOKIE_SAME_SITE);
+const secureCookies = parseBoolean(process.env.COOKIE_SECURE, isProd || sameSite === 'none');
 
 export const ACCESS_TOKEN_COOKIE_MAX_AGE = parseExpiryToMs(config.jwt.expires_in as string);
 
@@ -31,26 +34,26 @@ export const REFRESH_TOKEN_REDIS_TTL = parseExpiryToSeconds(
 
 const baseCookieOptions: CookieOptions = {
   httpOnly: true,
-  secure: isProd,
-  sameSite: isProd ? 'none' : 'lax',
+  secure: secureCookies,
+  sameSite,
   path: '/',
 };
 
 export const accessCookieOptions: CookieOptions = {
   ...baseCookieOptions,
-  ...(isProd ? { domain: '.ezlabtesting.com' } : {}),
+  ...(cookieDomain ? { domain: cookieDomain } : {}),
   maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE,
 };
 
 export const refreshCookieOptions: CookieOptions = {
   ...baseCookieOptions,
-  ...(isProd ? { domain: '.ezlabtesting.com' } : {}),
+  ...(cookieDomain ? { domain: cookieDomain } : {}),
   maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
 };
 
 export const clearCookieOptions: CookieOptions = {
   ...baseCookieOptions,
-  ...(isProd ? { domain: '.ezlabtesting.com' } : {}),
+  ...(cookieDomain ? { domain: cookieDomain } : {}),
 };
 
 export const legacyLocalhostCookieOptions: CookieOptions = {

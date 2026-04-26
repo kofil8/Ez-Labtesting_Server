@@ -37,7 +37,7 @@ export const sendToTokenSchema = z.object({
 });
 
 export const sendToUserSchema = z.object({
-  userId: z.union([z.string().regex(/^\d+$/), z.number()]),
+  userId: z.string().min(1, 'userId is required'),
   title: z.string().min(1, 'title is required'),
   body: z.string().optional().default(''),
   data: z.record(z.string()).optional().default({}),

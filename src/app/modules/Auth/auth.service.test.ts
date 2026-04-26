@@ -43,6 +43,8 @@ jest.mock('../notifications/notifications.service', () => ({
   NotificationService: {
     registerToken: jest.fn(),
     unregisterToken: jest.fn(),
+    sendTemplateNotification: jest.fn(),
+    sendCustomNotification: jest.fn(),
   },
 }));
 

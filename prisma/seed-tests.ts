@@ -71,6 +71,7 @@ const DEFAULT_STATE_RESTRICTION_POLICIES: Array<{
 type MedicalTestSeedRow = {
   id?: number | string | null;
   name?: string | null;
+  testCode?: string | null;
   slug?: string | null;
   description?: string | null;
   shortDescription?: string | null;
@@ -78,7 +79,7 @@ type MedicalTestSeedRow = {
   categorySlug?: string | null;
   specimenType?: string | null;
   baseTurnaroundDays?: number | null;
-  cptCode?: string | null;
+  cptCode?: string | string[] | null;
   isPanel?: boolean | null;
   componentSlugs?: string[] | null;
   isActive?: boolean | null;
@@ -124,6 +125,24 @@ const normalizeNullableInteger = (value: number | null | undefined) => {
   if (!Number.isFinite(value)) return null;
 
   return Math.max(0, Math.trunc(value));
+};
+
+const normalizeStringArray = (value: string | string[] | null | undefined) => {
+  if (value === undefined || value === null) return [];
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeOptionalString(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return [];
+
+  return normalized
+    .split(',')
+    .map((entry) => normalizeOptionalString(entry))
+    .filter((entry): entry is string => Boolean(entry));
 };
 
 const trimToLength = (value: string, maxLength: number) => value.slice(0, Math.max(0, maxLength));
@@ -232,13 +251,16 @@ async function seedTests() {
 
     for (const row of medicalTests) {
       const name = normalizeRequiredString(row.name);
+      const testCode = normalizeRequiredString(row.testCode);
       const slug = normalizeRequiredString(row.slug);
       const categorySlug = normalizeRequiredString(row.categorySlug);
 
-      if (!name || !slug || !categorySlug) {
+      if (!name || !testCode || !slug || !categorySlug) {
         const identifier = slug ?? name ?? `row-${row.id ?? 'unknown'}`;
-        logs.skippedTests.push(`${identifier}: missing name, slug, or categorySlug`);
-        console.warn(`Skipping test seed row "${identifier}" due to missing required fields`);
+        logs.skippedTests.push(`${identifier}: missing name, testCode, slug, or categorySlug`);
+        console.warn(
+          `Skipping test seed row "${identifier}" due to missing required fields (name/testCode/slug/categorySlug)`,
+        );
         continue;
       }
 
@@ -251,13 +273,14 @@ async function seedTests() {
 
       const testData = {
         name,
+        testCode,
         slug,
         description: normalizeOptionalString(row.description),
         shortDescription: normalizeOptionalString(row.shortDescription),
         testImageUrl: normalizeOptionalString(row.testImageUrl),
         specimenType: normalizeOptionalString(row.specimenType),
         baseTurnaroundDays: normalizeNullableInteger(row.baseTurnaroundDays),
-        cptCode: normalizeOptionalString(row.cptCode),
+        cptCode: normalizeStringArray(row.cptCode),
         categoryId,
         isPanel: normalizeBoolean(row.isPanel, false),
         isActive: normalizeBoolean(row.isActive, true),

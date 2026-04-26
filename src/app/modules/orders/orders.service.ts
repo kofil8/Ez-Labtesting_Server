@@ -22,6 +22,7 @@ import { orderTrackingService } from '../order-tracking/services/order-tracking.
 import { orderPatientService, UpsertOrderPatientInput } from '../patients/order-patient/services/order-patient.service';
 import { promoCodesService } from '../promo-codes/services/promo-codes.service';
 import { requisitionsService } from '../requisitions/services/requisitions.service';
+import { NotificationService } from '../notifications/notifications.service';
 import { toOrderSummary } from './mappers/order.mapper';
 import { OrdersRepository } from './repositories/orders.repository';
 import { orderStateMachine } from './state-machine/order-state-machine';
@@ -81,6 +82,49 @@ const toNullableJsonValue = (value: Prisma.InputJsonValue | null | undefined) =>
 class OrderService {
   private readonly repository = new OrdersRepository();
   private readonly cartRepository = new CartRepository();
+
+  private buildOrderNotificationData(order: Awaited<ReturnType<OrderService['getOrderById']>>, extra: Record<string, unknown> = {}) {
+    const patientName = [order.patient?.firstName, order.patient?.lastName].filter(Boolean).join(' ');
+
+    return {
+      orderId: order.orderNumber || order.id,
+      orderUuid: order.id,
+      userName: patientName || 'there',
+      amount: `${Number(order.total).toFixed(2)} ${order.currency}`,
+      testCount: String(order.orderItems?.length || 0),
+      clickAction: `/results/${order.id}`,
+      ...extra,
+    };
+  }
+
+  private async notifyOrder(
+    orderId: string,
+    type:
+      | 'ORDER_CREATED'
+      | 'PAYMENT_SUCCEEDED'
+      | 'PAYMENT_FAILED'
+      | 'ORDER_CONFIRMED'
+      | 'ORDER_IN_PROGRESS'
+      | 'REQUISITION_READY'
+      | 'LAB_SUBMISSION_FAILED'
+      | 'MANUAL_REVIEW_REQUIRED',
+    extra: Record<string, unknown> = {},
+  ) {
+    try {
+      const order = await this.getOrderById(orderId);
+      if (!order.userId) {
+        return;
+      }
+
+      await NotificationService.sendTemplateNotification(
+        order.userId,
+        type,
+        this.buildOrderNotificationData(order, extra),
+      );
+    } catch (error) {
+      console.error(`[OrderService] Failed to send ${type} notification`, error);
+    }
+  }
 
   private computeProcessingFee(subtotal: number) {
     const percent = Number(env.PROCESSING_FEE_PERCENT || 0);
@@ -354,6 +398,7 @@ class OrderService {
 
     await this.cartRepository.deleteManyByUserId(params.userId);
     await this.emitTrackingUpdate(created.id);
+    await this.notifyOrder(created.id, 'ORDER_CREATED');
     return this.getOrderById(created.id);
   }
 
@@ -383,7 +428,7 @@ class OrderService {
 
     const patient = (params.accessPayloadJson?.patient || {}) as Record<string, unknown>;
 
-    return prisma.$transaction(async (tx) => {
+    const createdOrderId = await prisma.$transaction(async (tx) => {
       const subtotal = round2(Number(labTest.salePrice ?? labTest.retailPrice));
       const processingFee = this.computeProcessingFee(subtotal);
       const total = round2(subtotal + processingFee);
@@ -442,8 +487,12 @@ class OrderService {
         tx,
       );
 
-      return this.getOrderById(order.id);
+      return order.id;
     });
+
+    await this.emitTrackingUpdate(createdOrderId);
+    await this.notifyOrder(createdOrderId, 'ORDER_CREATED');
+    return this.getOrderById(createdOrderId);
   }
 
   async markOrderPaymentProcessing(params: MarkOrderPaidParams) {
@@ -520,6 +569,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(order.id);
+    await this.notifyOrder(order.id, 'PAYMENT_SUCCEEDED');
     return this.getOrderById(order.id);
   }
 
@@ -543,6 +593,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'PAYMENT_FAILED', { reason });
     return this.getOrderById(orderId);
   }
 
@@ -566,6 +617,13 @@ class OrderService {
         updateData: {
           manualReviewRequired: true,
         },
+      });
+
+      await this.notifyOrder(orderId, 'MANUAL_REVIEW_REQUIRED', {
+        reason:
+          typeof metadata?.reason === 'string'
+            ? metadata.reason
+            : 'This order requires manual review',
       });
     }
 
@@ -602,6 +660,9 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'ORDER_CONFIRMED', {
+      appointmentDate: 'your selected lab visit',
+    });
     return this.getOrderById(orderId);
   }
 
@@ -629,6 +690,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'ORDER_IN_PROGRESS');
     return this.getOrderById(orderId);
   }
 
@@ -693,6 +755,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(updated.id);
+    await this.notifyOrder(updated.id, 'REQUISITION_READY');
     return this.getOrderById(updated.id);
   }
 
@@ -728,6 +791,9 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'LAB_SUBMISSION_FAILED', {
+      reason: payload.errorMessage || 'Lab submission failed',
+    });
     return this.getOrderById(orderId);
   }
 
@@ -762,6 +828,9 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'MANUAL_REVIEW_REQUIRED', {
+      reason: note || 'Customer requested manual review',
+    });
     return this.getOrderById(orderId);
   }
 

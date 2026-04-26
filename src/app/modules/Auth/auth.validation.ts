@@ -23,7 +23,7 @@ const register = z.object({
       .string({
         required_error: 'Password is required!',
       })
-      .min(6, 'Password must be at least 6 characters long!')
+      .min(8, 'Password must be at least 8 characters long!')
       .regex(
         /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])/,
         'Password must contain at least one uppercase letter, one number and one special character!',
@@ -62,7 +62,7 @@ const verifyOTP = z.object({
       }),
     otp: z.string({
       required_error: 'OTP is required!',
-    }),
+    }).regex(/^\d{6}$/, 'OTP must be 6 digits'),
   }),
 });
 
@@ -108,8 +108,14 @@ const forgotPassword = z.object({
 const resetPassword = z.object({
   body: z.object({
     email: z.string().email({ message: 'Invalid email address' }),
-    otp: z.string().min(6, 'OTP must be 6 digits'),
-    newPassword: z.string().min(6, 'Password must be at least 6 characters long'),
+    otp: z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters long')
+      .regex(
+        /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])/,
+        'Password must contain at least one uppercase letter, one number and one special character',
+      ),
   }),
 });
 

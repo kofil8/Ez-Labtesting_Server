@@ -1,6 +1,7 @@
 import http from 'http';
 import app from './app';
-import { stopNotificationCleanup } from './app/helpers/notificationCleanup';
+import { startNotificationCleanup, stopNotificationCleanup } from './app/helpers/notificationCleanup';
+import { initializeQueueProcessors } from './app/helpers/notificationQueue.processor';
 import auth from './app/middlewares/auth';
 import { initNotificationSocket } from './app/modules/notifications/notifications.socket';
 import { initOrderTrackingSocket } from './app/modules/orders/orders.socket';
@@ -28,6 +29,8 @@ async function startServer() {
     const io = initializeSocketIO(server);
 
     initializeQueues();
+    initializeQueueProcessors();
+    startNotificationCleanup();
     await ensureStaleOrderTimeoutCron();
     await ensureResultsSyncCron();
 

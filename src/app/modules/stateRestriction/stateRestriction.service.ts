@@ -180,15 +180,8 @@ class StateRestrictionService {
   }
 
   resolveClientIp(req: Request) {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (typeof forwarded === 'string') {
-      const firstForwarded = forwarded
-        .split(',')
-        .map((part) => part.trim())
-        .find(Boolean);
-      if (firstForwarded) {
-        return firstForwarded;
-      }
+    if (typeof req.ip === 'string' && req.ip.trim()) {
+      return req.ip.trim();
     }
 
     const realIp = req.headers['x-real-ip'];

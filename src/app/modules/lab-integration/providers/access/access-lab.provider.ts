@@ -1,3 +1,4 @@
+import prisma from '../../../../../shared/prisma';
 import ApiError from '../../../../errors/ApiErrors';
 import { accessCsvService } from '../../../../services/accessCsv.service';
 import { accessUploadService } from '../../../../services/accessUpload.service';
@@ -6,6 +7,13 @@ import {
   LabSubmissionAggregate,
   LabSubmissionResult,
 } from '../../contracts/lab-provider.interface';
+
+const toTrimmedString = (value: unknown) => {
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
 
 export class AccessLabProvider implements LabProvider {
   readonly code = 'ACCESS';
@@ -20,7 +28,9 @@ export class AccessLabProvider implements LabProvider {
     }
   }
 
-  async buildSubmissionPayload(aggregate: LabSubmissionAggregate): Promise<Record<string, unknown>> {
+  async buildSubmissionPayload(
+    aggregate: LabSubmissionAggregate,
+  ): Promise<Record<string, unknown>> {
     const order = aggregate.order as Record<string, unknown>;
     const patient = aggregate.patient || {};
     const items = aggregate.items || [];
@@ -40,14 +50,42 @@ export class AccessLabProvider implements LabProvider {
     try {
       const orderId = String((aggregate.order as Record<string, unknown>).id || '');
       const firstItem = aggregate.items[0] as Record<string, unknown>;
+      let accessTestCode = toTrimmedString(firstItem?.testCode);
+
+      // Resolve from Test model so ACCESS receives the canonical code configured per test.
+      if (!accessTestCode) {
+        const testId = toTrimmedString(firstItem?.testId);
+
+        if (testId) {
+          const test = await prisma.test.findUnique({
+            where: { id: testId },
+            select: { testCode: true },
+          });
+
+          accessTestCode = toTrimmedString(test?.testCode);
+        }
+      }
+
+      // Backward-compatible fallback for historical orders created before testCode mapping.
+      if (!accessTestCode) {
+        accessTestCode = toTrimmedString(firstItem?.labTestCode);
+      }
+
+      if (!accessTestCode) {
+        throw new ApiError(400, 'ACCESS submission requires a mapped testCode');
+      }
+
       const accessPayload = {
-        testCode: firstItem?.labTestCode,
+        testCode: accessTestCode,
         collectionType: 'PSC',
         patient: aggregate.patient || {},
         orderNumber: String((aggregate.order as Record<string, unknown>).orderNumber || ''),
       };
 
-      const { csvContent, s3Url } = await accessCsvService.generateCsv(orderId, accessPayload as never);
+      const { csvContent, s3Url } = await accessCsvService.generateCsv(
+        orderId,
+        accessPayload as never,
+      );
       const uploadResult = await accessUploadService.uploadCsv(s3Url);
 
       return {

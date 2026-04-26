@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createRateLimiter } from '../../middlewares/rateLimit';
+import { createRateLimiter } from '../../middlewares/redisLimit';
 import validateRequest from '../../middlewares/validateRequest';
 import { LabCenterController } from './lab-centers.controller';
 import {
@@ -12,8 +12,8 @@ import {
 } from './lab-centers.validation';
 
 const router = Router();
-const publicLocatorLimiter = createRateLimiter(60, 10);
-const autocompleteLimiter = createRateLimiter(80, 10);
+const publicLocatorLimiter = createRateLimiter(60, 10, 'lab-centers');
+const autocompleteLimiter = createRateLimiter(80, 10, 'lab-centers-autocomplete');
 
 router.get('/', publicLocatorLimiter, validateRequest(labCenterQuerySchema), LabCenterController.getLabCenters);
 router.get(

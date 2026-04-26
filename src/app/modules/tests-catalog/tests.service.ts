@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../../../config/db';
 import httpStatus from 'http-status';
+import { prisma } from '../../../config/db';
 import ApiError from '../../errors/ApiErrors';
 import { deleteFile } from '../../helpers/fileUploadHelper';
 
@@ -13,7 +13,7 @@ type TestPayload = {
   specimenType?: string;
   baseTurnaroundDays?: number;
   isPanel?: boolean;
-  cptCode?: string;
+  cptCode?: string[] | string;
   preparationInstructions?: string;
   preperationInstructions?: string; // backward compatibility
   internalNotes?: string;
@@ -48,13 +48,25 @@ function sanitizeTestImageUrl(url: string | null | undefined): string | null {
   return url.replace('/uplloads/', '/uploads/');
 }
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const normalizeOptionalString = (value?: string | null) => {
   if (value === undefined) return undefined;
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+};
+
+const normalizeOptionalStringArray = (value?: string[] | string) => {
+  if (value === undefined) return undefined;
+
+  const values = Array.isArray(value)
+    ? value
+    : value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+  return values;
 };
 
 const parseIntegerQuery = (value: unknown, fallback?: number) => {
@@ -232,7 +244,7 @@ const createTestInDB = async (payload: TestPayload, file?: Express.Multer.File) 
         shortDescription: normalizeOptionalString(payload.shortDescription),
         category: { connect: { id: payload.categoryId! } },
         specimenType: normalizeOptionalString(payload.specimenType),
-        cptCode: normalizeOptionalString(payload.cptCode),
+        cptCode: normalizeOptionalStringArray(payload.cptCode) ?? [],
         testImageUrl: testImage,
         baseTurnaroundDays: payload.baseTurnaroundDays ?? null,
         isPanel,
@@ -278,7 +290,6 @@ const createTestInDB = async (payload: TestPayload, file?: Express.Multer.File) 
     name: created.name,
     slug: created.slug,
     categoryId: created.categoryId,
-    category: created.category,
     testImageUrl: sanitizeTestImageUrl(created.testImageUrl),
     shortDescription: created.shortDescription,
     isPanel: created.isPanel,
@@ -312,7 +323,7 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
       { name: { contains: searchTerm, mode: 'insensitive' } },
       { description: { contains: searchTerm, mode: 'insensitive' } },
       { shortDescription: { contains: searchTerm, mode: 'insensitive' } },
-      { cptCode: { contains: searchTerm, mode: 'insensitive' } },
+      { cptCode: { has: searchTerm } },
       { searchKeywords: { hasSome: [searchTerm] } },
     ];
   }
@@ -731,7 +742,7 @@ const updateTestInDB = async (id: string, payload: TestPayload, file?: Express.M
       data.specimenType = normalizeOptionalString(payload.specimenType);
     }
     if (payload.cptCode !== undefined) {
-      data.cptCode = normalizeOptionalString(payload.cptCode);
+      data.cptCode = normalizeOptionalStringArray(payload.cptCode) ?? [];
     }
     if (payload.baseTurnaroundDays !== undefined) {
       data.baseTurnaroundDays = payload.baseTurnaroundDays;

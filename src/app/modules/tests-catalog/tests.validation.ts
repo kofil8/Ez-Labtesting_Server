@@ -56,7 +56,7 @@ const baseBodyObjectSchema = z.object({
   shortDescription: z.string().optional(),
   categoryId: z.string().uuid('Invalid category ID'),
   specimenType: z.string().optional(),
-  cptCode: z.string().optional(),
+  cptCode: stringArrayFromUnknown.optional(),
   baseTurnaroundDays: turnaroundFromString.optional(),
   isPanel: booleanFromString.optional(),
   preparationInstructions: z.string().optional(),

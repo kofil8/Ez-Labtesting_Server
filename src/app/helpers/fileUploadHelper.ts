@@ -1,4 +1,5 @@
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { randomUUID } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import multer, { FileFilterCallback } from 'multer';
 import multerS3 from 'multer-s3';
@@ -7,24 +8,13 @@ import config from '../../config';
 import { s3Client } from '../../lib/awsS3';
 
 // Allowed file types
-const allowedExtensions = [
-  '.pdf',
-  '.xlsx',
-  '.xls',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.txt',
-  '.doc',
-  '.docx',
-  '.mp4',
-  '.mp3',
-  '.csv',
-  '.ppt',
-  '.pptx',
-];
+const allowedImageTypes = new Map<string, Set<string>>([
+  ['.png', new Set(['image/png'])],
+  ['.jpg', new Set(['image/jpeg'])],
+  ['.jpeg', new Set(['image/jpeg'])],
+  ['.gif', new Set(['image/gif'])],
+  ['.webp', new Set(['image/webp'])],
+]);
 
 // Max 10 MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -40,9 +30,11 @@ const storage = multerS3({
   },
 
   key: (req: any, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, ext).replace(/\s+/g, '-');
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname).toLowerCase();
+    const baseName =
+      path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 80) ||
+      'upload';
+    const unique = `${Date.now()}-${randomUUID()}`;
 
     // If route sets req.s3Folder, use it → otherwise default to uploads/
     const folder = req.s3Folder ? `uploads/${req.s3Folder}` : 'uploads';
@@ -54,7 +46,14 @@ const storage = multerS3({
 // File validation
 const fileFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  allowedExtensions.includes(ext) ? cb(null, true) : cb(new Error(`Invalid file type: ${ext}`));
+  const allowedMimeTypes = allowedImageTypes.get(ext);
+
+  if (allowedMimeTypes?.has(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
+
+  cb(new Error(`Invalid image upload type: ${ext || file.mimetype}`));
 };
 
 // Multer instance

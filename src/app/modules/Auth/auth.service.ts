@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import { Secret } from 'jsonwebtoken';
@@ -49,6 +50,9 @@ type RegisterPayload = {
 };
 
 const ACCESS_TOKEN_BLACKLIST_TTL = parseExpiryToSeconds(config.jwt.expires_in as string);
+const RESET_CODE_RESPONSE = 'If an account exists for that email, a reset code has been sent.';
+
+const generateOtp = () => randomInt(100000, 1000000).toString();
 
 const queueOtpEmail = (email: string, subject: string, text: string, html: string) => {
   void sentEmailUtility(email, subject, text, html).catch((error) => {
@@ -83,7 +87,7 @@ const registerUserToDB = async (payload: RegisterPayload) => {
     }
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOtp();
 
   const [hashedPassword, hashedOtp] = await Promise.all([
     bcrypt.hash(payload.password, Number(config.salt)),
@@ -155,7 +159,7 @@ const resendOTP = async (email: string) => {
 
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOtp();
 
   const hashedOtp = await bcrypt.hash(otp, 8);
 
@@ -190,8 +194,10 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
     where: { email },
     data: { isVerified: true },
     select: {
+      id: true,
       email: true,
       firstName: true,
+      lastName: true,
     },
   });
 
@@ -205,6 +211,16 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
 
   // Remove OTP after success
   await redisClient.del(`otp:${email}`);
+
+  try {
+    await NotificationService.sendTemplateNotification(verifiedUser.id, 'ACCOUNT_VERIFIED', {
+      userName: [verifiedUser.firstName, verifiedUser.lastName].filter(Boolean).join(' ') || 'there',
+      appLink: process.env.FRONTEND_URL || 'http://localhost:3000',
+      clickAction: '/dashboard',
+    });
+  } catch (error) {
+    logger.error('Failed to send account verified notification', error);
+  }
 
   return { message: 'Email verified successfully' };
 };
@@ -314,6 +330,18 @@ const loginUserFromDB = async (payload: LoginPayload, ip: string) => {
       await NotificationService.registerToken(user.id, pushToken, platform);
     } catch (error) {
       logger.error('Failed to register push token during login', error);
+    }
+  }
+
+  if (isFirstLogin) {
+    try {
+      await NotificationService.sendTemplateNotification(user.id, 'WELCOME', {
+        userName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'there',
+        appLink: process.env.FRONTEND_URL || 'http://localhost:3000',
+        clickAction: '/dashboard',
+      });
+    } catch (error) {
+      logger.error('Failed to send welcome notification', error);
     }
   }
 
@@ -457,11 +485,6 @@ const logoutUser = async (
 
 // Forgot Password
 const forgotPassword = async (email: string) => {
-  const user = await prisma.user.findUnique({ where: { email } });
-
-  if (!user) throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
-
-  // Anti-spam (reuse logic if possible, or simple check)
   const cooldownKey = `otp_forgot_cooldown:${email}`;
   if (await redisClient.get(cooldownKey)) {
     throw new ApiError(429, 'Please wait 60 seconds before requesting another OTP.');
@@ -469,7 +492,12 @@ const forgotPassword = async (email: string) => {
 
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return { message: RESET_CODE_RESPONSE };
+  }
+
+  const otp = generateOtp();
 
   const hashedOtp = await bcrypt.hash(otp, 10);
 
@@ -484,23 +512,26 @@ const forgotPassword = async (email: string) => {
     emailTemplate(otp, 'Reset your password'),
   );
 
-  return { message: 'OTP sent to your email' };
+  return { message: RESET_CODE_RESPONSE };
 };
 
 // Reset Password
 const resetPassword = async (payload: { email: string; otp: string; newPassword: string }) => {
   const { email, otp, newPassword } = payload;
 
-  const hashedOtp = await redisClient.get(`otp_reset:${email}`);
+  const [user, hashedOtp] = await Promise.all([
+    prisma.user.findUnique({ where: { email } }),
+    redisClient.get(`otp_reset:${email}`),
+  ]);
 
-  if (!hashedOtp) {
-    throw new ApiError(400, 'OTP expired or invalid');
+  if (!user || !hashedOtp) {
+    throw new ApiError(400, 'Invalid or expired reset code');
   }
 
   const isValid = await bcrypt.compare(otp, hashedOtp);
 
   if (!isValid) {
-    throw new ApiError(400, 'Invalid OTP');
+    throw new ApiError(400, 'Invalid or expired reset code');
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, Number(config.salt));
@@ -511,6 +542,21 @@ const resetPassword = async (payload: { email: string; otp: string; newPassword:
   });
 
   await redisClient.del(`otp_reset:${email}`);
+
+  try {
+    await NotificationService.sendCustomNotification(
+      user.id,
+      'PASSWORD_RESET',
+      'Password Reset',
+      'Your password was reset successfully.',
+      {
+        userName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'there',
+        clickAction: '/login',
+      },
+    );
+  } catch (error) {
+    logger.error('Failed to send password reset notification', error);
+  }
 
   return { message: 'Password reset successfully' };
 };

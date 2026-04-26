@@ -1,5 +1,4 @@
 import { env } from '../../config/env';
-import { getIO } from '../../config/socket';
 import { prisma } from '../../shared/prisma';
 import logger from '../utils/logger';
 import { socketManager } from './socketManager';
@@ -43,7 +42,11 @@ export const getMissedNotifications = async (userId: string, lastDisconnectedAt:
         body: true,
         data: true,
         priority: true,
+        isRead: true,
+        readAt: true,
+        createdAt: true,
         sentAt: true,
+        deliveredVia: true,
       },
     });
 
@@ -65,17 +68,18 @@ export const sendMissedNotifications = async (userId: string, missedNotification
       return;
     }
 
-    const io = getIO();
-
     for (const notification of missedNotifications) {
-      // Emit each missed notification
       socketManager.emitToUser(userId, 'notification:missed', {
         id: notification.id,
+        userId,
         type: notification.type,
         title: notification.title,
         body: notification.body,
         data: notification.data,
         priority: notification.priority,
+        isRead: notification.isRead,
+        readAt: notification.readAt,
+        createdAt: notification.createdAt,
         sentAt: notification.sentAt,
       });
 

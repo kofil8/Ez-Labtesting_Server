@@ -198,10 +198,29 @@ class OrderController {
       }
 
       const paymentResult = await paymentService.confirmPaymentIntent(stripePaymentIntentId);
+      if (
+        paymentResult.metadata?.orderId !== order.id ||
+        paymentResult.metadata?.userId !== order.userId
+      ) {
+        return res.status(httpStatus.FORBIDDEN).json({
+          success: false,
+          message: 'Payment intent does not belong to this order',
+        });
+      }
+
       if (!['succeeded', 'processing'].includes(paymentResult.status)) {
         return res.status(httpStatus.CONFLICT).json({
           success: false,
           message: `Payment not confirmed. Status: ${paymentResult.status}`,
+        });
+      }
+
+      const expectedCents = Math.round(Number(order.total) * 100);
+      const receivedCents = Math.round(Number(paymentResult.amount) * 100);
+      if (receivedCents < expectedCents) {
+        return res.status(httpStatus.CONFLICT).json({
+          success: false,
+          message: 'Payment amount does not cover the order total',
         });
       }
 

@@ -1,17 +1,11 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
-import { env } from './env';
+import { getAllowedOrigins } from './security';
 
 let io: Server;
 
 function getAllowedSocketOrigins() {
-  if (env.NODE_ENV === 'production') {
-    return [env.FRONTEND_URL];
-  }
-
-  return Array.from(
-    new Set(['http://localhost:3000', env.FRONTEND_URL].filter(Boolean)),
-  );
+  return getAllowedOrigins();
 }
 
 export interface SocketData {
