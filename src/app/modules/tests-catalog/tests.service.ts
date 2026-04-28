@@ -461,6 +461,7 @@ const getTestByIdDB = async (identifier: string) => {
       description: true,
       specimenType: true,
       cptCode: true,
+      setUpSchedule: true,
       testImageUrl: true,
       baseTurnaroundDays: true,
       isPanel: true,
