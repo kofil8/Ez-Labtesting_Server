@@ -43,6 +43,7 @@ router.post('/refreshtoken', refreshLimiter, AuthControllers.refreshToken);
 
 // 👉 Logout (Auth Required)
 router.post('/logout', auth(), AuthControllers.logoutUser);
+router.post('/devices/:deviceId/logout', auth(), AuthControllers.logoutDevice);
 
 // 👉 Forgot Password (No Auth Required)
 router.post(

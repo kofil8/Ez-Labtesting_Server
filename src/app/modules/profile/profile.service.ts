@@ -56,6 +56,7 @@ const getProfileFromDB = async (user: any) => {
       zipCode: true,
       dateOfBirth: true,
       role: true,
+      status: true,
       isVerified: true,
       createdAt: true,
       updatedAt: true,

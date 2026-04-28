@@ -12,13 +12,14 @@ class SocketManager {
 
   // Map socketId to userId (reverse lookup)
   private socketUsers: Map<string, string> = new Map();
+  private socketDevices: Map<string, string> = new Map();
 
   private lastDisconnectedAt: Map<string, Date> = new Map();
 
   /**
    * Add a connection when user connects
    */
-  async addConnection(userId: string, socketId: string): Promise<void> {
+  async addConnection(userId: string, socketId: string, deviceId?: string): Promise<void> {
     try {
       // Add to maps
       if (!this.userSockets.has(userId)) {
@@ -26,6 +27,9 @@ class SocketManager {
       }
       this.userSockets.get(userId)!.add(socketId);
       this.socketUsers.set(socketId, userId);
+      if (deviceId) {
+        this.socketDevices.set(socketId, deviceId);
+      }
 
       this.lastDisconnectedAt.delete(userId);
 
@@ -56,6 +60,7 @@ class SocketManager {
       }
 
       this.socketUsers.delete(socketId);
+      this.socketDevices.delete(socketId);
       console.log(`🔌 Socket ${socketId} disconnected (user: ${userId})`);
     } catch (error) {
       console.error('Error removing connection:', error);
@@ -95,6 +100,23 @@ class SocketManager {
    */
   emitToUser(userId: string, event: string, data: any): boolean {
     const socketIds = this.getUserSockets(userId);
+
+    if (socketIds.length === 0) {
+      return false;
+    }
+
+    const io = getIO();
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit(event, data);
+    });
+
+    return true;
+  }
+
+  emitToUserDevice(userId: string, deviceId: string, event: string, data: any): boolean {
+    const socketIds = this.getUserSockets(userId).filter(
+      (socketId) => this.socketDevices.get(socketId) === deviceId,
+    );
 
     if (socketIds.length === 0) {
       return false;

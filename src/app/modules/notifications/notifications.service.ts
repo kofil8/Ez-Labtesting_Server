@@ -157,7 +157,7 @@ const buildDefaultClickAction = (type: NotificationType, data: NotificationData)
       'MANUAL_REVIEW_REQUIRED',
     ].includes(type)
   ) {
-    return `/results/${orderId}`;
+    return `/dashboard/customer/results/${orderId}`;
   }
 
   return '/dashboard';

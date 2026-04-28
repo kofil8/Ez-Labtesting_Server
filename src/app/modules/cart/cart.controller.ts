@@ -14,6 +14,63 @@ export const cartController = {
     sendResponse(res, { statusCode: 200, success: true, message: 'Cart retrieved', data: cart });
   }),
 
+  syncCart: catchAsync(async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    const deviceId = req.header('x-cart-device-id') || req.body.deviceId;
+    const { items, clientTimestamp } = req.body;
+
+    const cart = await cartService.syncCart({
+      userId,
+      localItems: items || [],
+      clientTimestamp: new Date(clientTimestamp || Date.now()),
+      sourceDeviceId: typeof deviceId === 'string' ? deviceId : undefined,
+    });
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: 'Cart synchronized across devices',
+      data: cart,
+    });
+  }),
+
+  getLockStatus: catchAsync(async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    const lock = await cartService.getCartLock(userId);
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: 'Cart lock status retrieved',
+      data: lock,
+    });
+  }),
+
+  lockCart: catchAsync(async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    const lock = await cartService.lockCart({
+      userId,
+      ttlSeconds: req.body?.ttlSeconds,
+      reason: req.body?.reason,
+    });
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: 'Cart locked for checkout',
+      data: lock,
+    });
+  }),
+
+  unlockCart: catchAsync(async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    await cartService.unlockCart(userId);
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: 'Cart unlocked',
+      data: null,
+    });
+  }),
+
   addItem: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     const cart = await cartService.addItem({ userId, ...req.body });

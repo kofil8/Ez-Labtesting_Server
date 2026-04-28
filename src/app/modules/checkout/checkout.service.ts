@@ -59,28 +59,39 @@ export class CheckoutService {
       }
     }
 
-    const order = await orderService.createOrderFromCart({
+    await cartService.lockCart({
       userId: params.userId,
-      req: params.req,
-      patient: {
-        relationToUser: params.patient.relationToUser || 'SELF',
-        firstName: params.patient.firstName,
-        lastName: params.patient.lastName,
-        dateOfBirth: this.parseDate(params.patient.dateOfBirth),
-        gender: params.patient.gender || null,
-        phoneNumber: params.patient.phoneNumber || null,
-        email: params.patient.email || null,
-        addressLine1: params.patient.addressLine1 || null,
-        addressLine2: params.patient.addressLine2 || null,
-        city: params.patient.city || null,
-        state: params.patient.state || null,
-        zipCode: params.patient.zipCode || null,
-      },
-      promoCode: params.promoCode,
-      drawCenterId: params.drawCenterId,
-      idempotencyKey: params.idempotencyKey,
-      state: params.patient.state,
+      ttlSeconds: 15 * 60,
+      reason: 'checkout-session',
     });
+
+    let order;
+    try {
+      order = await orderService.createOrderFromCart({
+        userId: params.userId,
+        req: params.req,
+        patient: {
+          relationToUser: params.patient.relationToUser || 'SELF',
+          firstName: params.patient.firstName,
+          lastName: params.patient.lastName,
+          dateOfBirth: this.parseDate(params.patient.dateOfBirth),
+          gender: params.patient.gender || null,
+          phoneNumber: params.patient.phoneNumber || null,
+          email: params.patient.email || null,
+          addressLine1: params.patient.addressLine1 || null,
+          addressLine2: params.patient.addressLine2 || null,
+          city: params.patient.city || null,
+          state: params.patient.state || null,
+          zipCode: params.patient.zipCode || null,
+        },
+        promoCode: params.promoCode,
+        drawCenterId: params.drawCenterId,
+        idempotencyKey: params.idempotencyKey,
+        state: params.patient.state,
+      });
+    } finally {
+      await cartService.unlockCart(params.userId);
+    }
 
     return {
       id: order.id,

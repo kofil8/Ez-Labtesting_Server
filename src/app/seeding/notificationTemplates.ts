@@ -148,7 +148,7 @@ const notificationTemplates: NotificationTemplateData[] = [
       {
         name: 'resultLink',
         description: 'Link to view results',
-        example: 'https://app.ezlabtesting.com/results/123',
+        example: 'https://app.ezlabtesting.com/dashboard/customer/results/123',
       },
     ],
   },
@@ -178,7 +178,7 @@ const notificationTemplates: NotificationTemplateData[] = [
       {
         name: 'resultLink',
         description: 'Link to view results',
-        example: 'https://app.ezlabtesting.com/results/123',
+        example: 'https://app.ezlabtesting.com/dashboard/customer/results/123',
       },
     ],
   },
@@ -212,7 +212,7 @@ const notificationTemplates: NotificationTemplateData[] = [
       {
         name: 'resultLink',
         description: 'Link to view results',
-        example: 'https://app.ezlabtesting.com/results/123',
+        example: 'https://app.ezlabtesting.com/dashboard/customer/results/123',
       },
     ],
   },

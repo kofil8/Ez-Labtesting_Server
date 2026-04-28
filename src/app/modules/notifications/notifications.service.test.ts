@@ -121,7 +121,7 @@ describe('NotificationService delivery pipeline', () => {
       orderId: 'EZ-123',
       amount: '42',
       nested: '{"ok":true}',
-      clickAction: '/results/EZ-123',
+        clickAction: '/dashboard/customer/results/EZ-123',
       createdAt: '2026-04-26T01:00:00.000Z',
       sentAt: '2026-04-26T01:00:00.000Z',
     });

@@ -92,7 +92,7 @@ class OrderService {
       userName: patientName || 'there',
       amount: `${Number(order.total).toFixed(2)} ${order.currency}`,
       testCount: String(order.orderItems?.length || 0),
-      clickAction: `/results/${order.id}`,
+        clickAction: `/dashboard/customer/results/${order.id}`,
       ...extra,
     };
   }

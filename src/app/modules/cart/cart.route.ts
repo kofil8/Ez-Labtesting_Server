@@ -5,7 +5,9 @@ import { cartController } from './cart.controller';
 import {
   addCartItemSchema,
   applyPromoCodeSchema,
+  cartLockSchema,
   removeCartItemSchema,
+  syncCartSchema,
   updateCartItemSchema,
   validateCartSchema,
 } from './cart.validation';
@@ -13,6 +15,10 @@ import {
 const router = express.Router();
 
 router.get('/', auth(), cartController.getCart);
+router.get('/lock', auth(), cartController.getLockStatus);
+router.post('/lock', auth(), validateRequest(cartLockSchema), cartController.lockCart);
+router.delete('/lock', auth(), cartController.unlockCart);
+router.post('/sync', auth(), validateRequest(syncCartSchema), cartController.syncCart);
 router.post('/items', auth(), validateRequest(addCartItemSchema), cartController.addItem);
 router.patch(
   '/items/:itemId',
@@ -26,7 +32,12 @@ router.delete(
   validateRequest(removeCartItemSchema),
   cartController.removeItem,
 );
-router.post('/apply-promo', auth(), validateRequest(applyPromoCodeSchema), cartController.applyPromoCode);
+router.post(
+  '/apply-promo',
+  auth(),
+  validateRequest(applyPromoCodeSchema),
+  cartController.applyPromoCode,
+);
 router.delete('/promo', auth(), cartController.removePromoCode);
 router.post('/validate', auth(), validateRequest(validateCartSchema), cartController.validateCart);
 

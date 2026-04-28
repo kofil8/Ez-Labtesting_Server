@@ -396,7 +396,6 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
         labTests: {
           where: buildPublicLabTestWhere(),
           orderBy: { retailPrice: 'asc' },
-          take: 1,
           select: {
             id: true,
             retailPrice: true,
@@ -424,16 +423,24 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
 
   const totalPages = Math.ceil(total / limit);
 
-  const sanitizedTests = tests.map((test) => ({
-    ...test,
-    testImageUrl: sanitizeTestImageUrl(test.testImageUrl),
-    componentCount: test.panelComponents.filter((item) => item.componentTest.isActive).length,
-    startingPrice: test.labTests[0]?.retailPrice ?? null,
-    startingLab: test.labTests[0]?.laboratory ?? null,
-    turnaroundDays: test.labTests[0]?.turnaroundDaysOverride ?? test.baseTurnaroundDays ?? null,
-    panelComponents: undefined,
-    labTests: undefined,
-  }));
+  const sanitizedTests = tests.map((test) => {
+    const accessLabTest = test.labTests.find(
+      (labTest) => labTest.laboratory.code.toUpperCase() === 'ACCESS',
+    );
+
+    return {
+      ...test,
+      testImageUrl: sanitizeTestImageUrl(test.testImageUrl),
+      componentCount: test.panelComponents.filter((item) => item.componentTest.isActive).length,
+      accessLabTestId: accessLabTest?.id ?? null,
+      startingLabTestId: test.labTests[0]?.id ?? null,
+      startingPrice: test.labTests[0]?.retailPrice ?? null,
+      startingLab: test.labTests[0]?.laboratory ?? null,
+      turnaroundDays: test.labTests[0]?.turnaroundDaysOverride ?? test.baseTurnaroundDays ?? null,
+      panelComponents: undefined,
+      labTests: undefined,
+    };
+  });
 
   return {
     meta: {

@@ -14,6 +14,7 @@ export interface SocketData {
     email: string;
     role: string;
   };
+  deviceId?: string;
 }
 
 export type AuthenticatedSocket = Socket<any, any, any, SocketData>;

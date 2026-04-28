@@ -3,6 +3,7 @@ import httpStatus from 'http-status';
 import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
+import { socketManager } from '../../helpers/socketManager';
 import { AuthServices } from './auth.service';
 import { clearAuthCookies, setAuthCookies } from './auth.constants';
 
@@ -151,6 +152,27 @@ const logoutUser = catchAsync(async (req, res) => {
   });
 });
 
+const logoutDevice = catchAsync(async (req, res) => {
+  const userId = req.user?.id;
+  const deviceId = typeof req.params.deviceId === 'string' ? req.params.deviceId.trim() : '';
+
+  if (!userId || !deviceId) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Missing device id');
+  }
+
+  const delivered = socketManager.emitToUserDevice(userId, deviceId, 'auth:device-logout', {
+    deviceId,
+    clearCart: true,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: delivered ? 'Device logout requested' : 'Device is not currently online',
+    data: { delivered },
+  });
+});
+
 // ---------------------------
 // FORGOT PASSWORD
 // ---------------------------
@@ -186,6 +208,7 @@ export const AuthControllers = {
   loginUser,
   refreshToken,
   logoutUser,
+  logoutDevice,
   forgotPassword,
   resetPassword,
 };

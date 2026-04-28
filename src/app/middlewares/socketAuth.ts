@@ -47,6 +47,25 @@ function extractSocketToken(socket: Socket) {
   return null;
 }
 
+function extractSocketDeviceId(socket: Socket) {
+  const authDeviceId = socket.handshake.auth.deviceId;
+  if (typeof authDeviceId === 'string' && authDeviceId.trim()) {
+    return authDeviceId.trim().slice(0, 128);
+  }
+
+  const queryDeviceId = socket.handshake.query.deviceId;
+  if (typeof queryDeviceId === 'string' && queryDeviceId.trim()) {
+    return queryDeviceId.trim().slice(0, 128);
+  }
+
+  const headerDeviceId = socket.handshake.headers['x-cart-device-id'];
+  if (typeof headerDeviceId === 'string' && headerDeviceId.trim()) {
+    return headerDeviceId.trim().slice(0, 128);
+  }
+
+  return undefined;
+}
+
 /**
  * Socket.IO authentication middleware
  * Verifies JWT token and attaches user data to socket
@@ -93,6 +112,7 @@ export const socketAuth = async (socket: Socket, next: (err?: ExtendedError) => 
       email: user.email,
       role: user.role,
     };
+    socket.data.deviceId = extractSocketDeviceId(socket);
 
     console.log(`🔐 Socket authenticated: ${user.email} (${socket.id})`);
     next();
