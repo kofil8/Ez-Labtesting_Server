@@ -10,6 +10,7 @@ import { OrderRoutes } from '../modules/orders/orders.route';
 import { PanelsRoutes } from '../modules/panels/panels.route';
 import { PaymentRoutes } from '../modules/payment/payment.route';
 import { ProfileRouters } from '../modules/profile/profile.route';
+import { PromoCodeRoutes } from '../modules/promo-codes/promo-codes.route';
 import { ReviewRoutes } from '../modules/review/review.route';
 import StateRestrictionRoutes from '../modules/stateRestriction/stateRestriction.route';
 import { SuperAdminRouters } from '../modules/superadmin/superadmin.route';
@@ -85,6 +86,10 @@ const moduleRoutes = [
   {
     path: '/payment',
     route: PaymentRoutes,
+  },
+  {
+    path: '/promo-codes',
+    route: PromoCodeRoutes,
   },
   {
     path: '/checkout',
