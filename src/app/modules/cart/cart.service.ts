@@ -3,7 +3,6 @@ import redisClient from '../../../config/redis';
 import prisma from '../../../shared/prisma';
 import ApiError from '../../errors/ApiErrors';
 import { socketManager } from '../../helpers/socketManager';
-import { NotificationService } from '../notifications/notifications.service';
 import { promoCodesService } from '../promo-codes/services/promo-codes.service';
 import stateRestrictionService from '../stateRestriction/stateRestriction.service';
 import { CartRepository } from './repositories/cart.repository';
@@ -310,14 +309,18 @@ class CartService {
         // Item exists on server - update if client is newer
         const serverUpdatedAt = serverItem.updatedAt.getTime();
         const clientTimestamp = input.clientTimestamp.getTime();
+        const nextDrawCenterId = localItem.drawCenterId || null;
+        const itemChanged =
+          serverItem.quantity !== localItem.quantity ||
+          (serverItem.drawCenterId || null) !== nextDrawCenterId;
 
-        // Only update if client is newer
-        if (clientTimestamp >= serverUpdatedAt) {
+        // Only update if client is newer and the payload actually changes the row.
+        if (itemChanged && clientTimestamp >= serverUpdatedAt) {
           await this.repository.updateItem({
             where: { id: serverItem.id },
             data: {
               quantity: localItem.quantity,
-              drawCenterId: localItem.drawCenterId || null,
+              drawCenterId: nextDrawCenterId,
             },
           });
           changed = true;
@@ -397,22 +400,6 @@ class CartService {
     const cart = await this.getCart(input.userId);
     if (changed) {
       this.emitCartUpdated(input.userId, cart, input.sourceDeviceId);
-      if (input.sourceDeviceId) {
-        void NotificationService.sendCustomNotification(
-          input.userId,
-          'ADMIN_ANNOUNCEMENT',
-          'Cart updated',
-          'Your cart was updated on a signed-in device.',
-          {
-            type: 'CART_UPDATED',
-            sourceDeviceId: input.sourceDeviceId,
-            clickAction: '/cart',
-          },
-          null,
-        ).catch((error) => {
-          console.error('Failed to dispatch cart update notification:', error);
-        });
-      }
     }
     return cart;
   }

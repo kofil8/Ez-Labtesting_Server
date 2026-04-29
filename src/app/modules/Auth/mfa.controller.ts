@@ -1,12 +1,16 @@
 import httpStatus from 'http-status';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../../config/db';
+import redisClient from '../../../config/redis';
 import { MFAService } from '../../../lib/mfaService';
 import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
 import { setAuthCookies } from './auth.constants';
 import { issueAuthSessionTokens } from './auth.session';
+
+const MFA_CHANGE_PASSWORD_TTL_SECONDS = 5 * 60;
+export const mfaChangePasswordKey = (userId: string) => `mfa:verified:change-password:${userId}`;
 
 // ---------------------------
 // SETUP MFA - Generate Secret & QR Code
@@ -306,6 +310,48 @@ const regenerateBackupCodes = catchAsync(async (req, res) => {
   });
 });
 
+// ---------------------------
+// VERIFY SENSITIVE ACTION - Authenticated step-up before high-risk actions
+// ---------------------------
+const verifySensitiveAction = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+  const { token, action } = req.body;
+
+  if (action !== 'CHANGE_PASSWORD') {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Unsupported MFA action');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { mfaEnabled: true, mfaSecret: true },
+  });
+
+  if (!user?.mfaEnabled || !user.mfaSecret) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'MFA is not enabled for this account');
+  }
+
+  const isValid = MFAService.verifyToken(user.mfaSecret, token);
+  if (!isValid) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid verification code');
+  }
+
+  await redisClient.set(
+    mfaChangePasswordKey(userId),
+    new Date().toISOString(),
+    'EX',
+    MFA_CHANGE_PASSWORD_TTL_SECONDS,
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    message: 'MFA verification successful',
+    data: {
+      action,
+      expiresInSeconds: MFA_CHANGE_PASSWORD_TTL_SECONDS,
+    },
+  });
+});
+
 export const MFAControllers = {
   setupMFA,
   verifySetup,
@@ -314,4 +360,5 @@ export const MFAControllers = {
   disableMFA,
   getMFAStatus,
   regenerateBackupCodes,
+  verifySensitiveAction,
 };

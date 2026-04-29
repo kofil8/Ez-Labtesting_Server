@@ -53,4 +53,13 @@ router.post(
   MFAControllers.regenerateBackupCodes,
 );
 
+// Verify MFA before sensitive in-session actions such as password change
+router.post(
+  '/verify-sensitive',
+  mfaVerifyLimiter,
+  auth(),
+  validateRequest(mfaValidation.verifySensitiveAction),
+  MFAControllers.verifySensitiveAction,
+);
+
 export const MFARouters = router;

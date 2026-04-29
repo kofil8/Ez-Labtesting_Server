@@ -61,10 +61,22 @@ const regenerateBackupCodes = z.object({
   }),
 });
 
+const verifySensitiveAction = z.object({
+  body: z.object({
+    token: z
+      .string({
+        required_error: 'Verification code is required',
+      })
+      .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
+    action: z.enum(['CHANGE_PASSWORD']).default('CHANGE_PASSWORD'),
+  }),
+});
+
 export const mfaValidation = {
   verifySetup,
   verifyMFA,
   verifyBackupCode,
   disableMFA,
   regenerateBackupCodes,
+  verifySensitiveAction,
 };

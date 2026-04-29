@@ -1,5 +1,6 @@
 import express from 'express';
 import auth from '../../middlewares/auth';
+import { cartSyncLimiter } from '../../middlewares/redisLimit';
 import validateRequest from '../../middlewares/validateRequest';
 import { cartController } from './cart.controller';
 import {
@@ -18,7 +19,7 @@ router.get('/', auth(), cartController.getCart);
 router.get('/lock', auth(), cartController.getLockStatus);
 router.post('/lock', auth(), validateRequest(cartLockSchema), cartController.lockCart);
 router.delete('/lock', auth(), cartController.unlockCart);
-router.post('/sync', auth(), validateRequest(syncCartSchema), cartController.syncCart);
+router.post('/sync', auth(), cartSyncLimiter, validateRequest(syncCartSchema), cartController.syncCart);
 router.post('/items', auth(), validateRequest(addCartItemSchema), cartController.addItem);
 router.patch(
   '/items/:itemId',

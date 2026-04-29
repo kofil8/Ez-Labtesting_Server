@@ -13,7 +13,15 @@ const parseBodyData = async (req: Request, res: Response, next: NextFunction) =>
         return next(new ApiError(400, 'Invalid JSON format in data field'));
       }
     }
-    // Case 2: Data fields are already parsed by multer (multipart form data)
+    // Case 2: Profile update payloads may send bodyData as a JSON string.
+    if (req.body && req.body.bodyData && typeof req.body.bodyData === 'string') {
+      try {
+        req.body.bodyData = JSON.parse(req.body.bodyData);
+      } catch {
+        return next(new ApiError(400, 'Invalid JSON format in bodyData field'));
+      }
+    }
+    // Case 3: Data fields are already parsed by multer (multipart form data)
     // In this case, form fields are already directly in req.body, so no action needed
 
     next();
