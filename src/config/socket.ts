@@ -1,8 +1,12 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
-import { env } from './env';
+import { getAllowedOrigins } from './security';
 
 let io: Server;
+
+function getAllowedSocketOrigins() {
+  return getAllowedOrigins();
+}
 
 export interface SocketData {
   user: {
@@ -10,6 +14,7 @@ export interface SocketData {
     email: string;
     role: string;
   };
+  deviceId?: string;
 }
 
 export type AuthenticatedSocket = Socket<any, any, any, SocketData>;
@@ -20,7 +25,7 @@ export type AuthenticatedSocket = Socket<any, any, any, SocketData>;
 export const initializeSocketIO = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
-      origin: env.CLIENT_URL,
+      origin: getAllowedSocketOrigins(),
       credentials: true,
       methods: ['GET', 'POST'],
     },

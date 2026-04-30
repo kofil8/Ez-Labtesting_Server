@@ -1,0 +1,57 @@
+import { OrderStatus } from '@prisma/client';
+import ApiError from '../../../errors/ApiErrors';
+
+const transitionMap: Record<OrderStatus, OrderStatus[]> = {
+  CART: ['PENDING_PATIENT_INFO', 'PENDING_PAYMENT', 'CANCELLED'],
+  PENDING_PATIENT_INFO: ['PENDING_PAYMENT', 'CANCELLED'],
+  PENDING_PAYMENT: ['PAYMENT_FAILED', 'AWAITING_USER_CONFIRMATION', 'CANCELLED'],
+  PAYMENT_FAILED: ['PENDING_PAYMENT', 'CANCELLED'],
+  PAID: ['AWAITING_USER_CONFIRMATION', 'CANCELLED'],
+  AWAITING_USER_CONFIRMATION: ['READY_FOR_LAB_SUBMISSION', 'CANCELLED'],
+  READY_FOR_LAB_SUBMISSION: ['LAB_SUBMISSION_IN_PROGRESS', 'MANUAL_REVIEW_REQUIRED', 'CANCELLED'],
+  LAB_SUBMISSION_IN_PROGRESS: [
+    'SUBMITTED_TO_LAB',
+    'REQUISITION_READY',
+    'LAB_SUBMISSION_FAILED',
+    'MANUAL_REVIEW_REQUIRED',
+  ],
+  LAB_SUBMISSION_FAILED: ['READY_FOR_LAB_SUBMISSION', 'MANUAL_REVIEW_REQUIRED', 'CANCELLED'],
+  MANUAL_REVIEW_REQUIRED: ['READY_FOR_LAB_SUBMISSION', 'CANCELLED'],
+  SUBMITTED_TO_LAB: ['REQUISITION_READY', 'COMPLETED', 'MANUAL_REVIEW_REQUIRED'],
+  REQUISITION_READY: ['COMPLETED', 'MANUAL_REVIEW_REQUIRED'],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
+const stepMap: Record<OrderStatus, number> = {
+  CART: 0,
+  PENDING_PATIENT_INFO: 0,
+  PENDING_PAYMENT: 1,
+  PAYMENT_FAILED: 1,
+  PAID: 2,
+  AWAITING_USER_CONFIRMATION: 2,
+  READY_FOR_LAB_SUBMISSION: 3,
+  LAB_SUBMISSION_IN_PROGRESS: 3,
+  LAB_SUBMISSION_FAILED: 3,
+  MANUAL_REVIEW_REQUIRED: 3,
+  SUBMITTED_TO_LAB: 4,
+  REQUISITION_READY: 4,
+  COMPLETED: 5,
+  CANCELLED: 0,
+};
+
+export const orderStateMachine = {
+  assertTransition(from: OrderStatus, to: OrderStatus) {
+    if (from === to) {
+      return;
+    }
+
+    if (!transitionMap[from]?.includes(to)) {
+      throw new ApiError(409, `Invalid order transition from ${from} to ${to}`);
+    }
+  },
+
+  getStep(status: OrderStatus) {
+    return stepMap[status] ?? 0;
+  },
+};

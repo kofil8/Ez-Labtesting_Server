@@ -1,10 +1,16 @@
 import httpStatus from 'http-status';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../../config/db';
+import redisClient from '../../../config/redis';
 import { MFAService } from '../../../lib/mfaService';
 import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
+import { setAuthCookies } from './auth.constants';
+import { issueAuthSessionTokens } from './auth.session';
+
+const MFA_CHANGE_PASSWORD_TTL_SECONDS = 5 * 60;
+export const mfaChangePasswordKey = (userId: string) => `mfa:verified:change-password:${userId}`;
 
 // ---------------------------
 // SETUP MFA - Generate Secret & QR Code
@@ -111,17 +117,9 @@ const verifyMFA = catchAsync(async (req, res) => {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid verification code');
   }
 
-  // Generate full access & refresh tokens
-  const accessToken = jwt.sign(
+  const { accessToken, refreshToken } = await issueAuthSessionTokens(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '15m' },
-  );
-
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '7d' },
+    { event: 'mfa-verify-issue' },
   );
 
   // Update last login
@@ -130,25 +128,7 @@ const verifyMFA = catchAsync(async (req, res) => {
     data: { lastLogin: new Date() },
   });
 
-  // Store refresh token in secure cookie
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  // Store access token in httpOnly cookie
-  res.cookie('accessToken', accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    domain: 'localhost',
-    path: '/',
-    maxAge: 15 * 60 * 1000,
-  });
+  setAuthCookies(res, { accessToken, refreshToken });
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -212,17 +192,9 @@ const verifyBackupCode = catchAsync(async (req, res) => {
   // Consume the backup code
   await MFAService.consumeBackupCode(user.id, codeIndex);
 
-  // Generate full access & refresh tokens
-  const accessToken = jwt.sign(
+  const { accessToken, refreshToken } = await issueAuthSessionTokens(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '15m' },
-  );
-
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '7d' },
+    { event: 'mfa-backup-issue' },
   );
 
   // Update last login
@@ -231,22 +203,7 @@ const verifyBackupCode = catchAsync(async (req, res) => {
     data: { lastLogin: new Date() },
   });
 
-  // Store tokens in cookies
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  res.cookie('accessToken', accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 15 * 60 * 1000,
-  });
+  setAuthCookies(res, { accessToken, refreshToken });
 
   const remainingCodes = user.mfaBackupCodes.length - 1;
 
@@ -353,6 +310,48 @@ const regenerateBackupCodes = catchAsync(async (req, res) => {
   });
 });
 
+// ---------------------------
+// VERIFY SENSITIVE ACTION - Authenticated step-up before high-risk actions
+// ---------------------------
+const verifySensitiveAction = catchAsync(async (req, res) => {
+  const userId = req.user.id;
+  const { token, action } = req.body;
+
+  if (action !== 'CHANGE_PASSWORD') {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Unsupported MFA action');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { mfaEnabled: true, mfaSecret: true },
+  });
+
+  if (!user?.mfaEnabled || !user.mfaSecret) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'MFA is not enabled for this account');
+  }
+
+  const isValid = MFAService.verifyToken(user.mfaSecret, token);
+  if (!isValid) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid verification code');
+  }
+
+  await redisClient.set(
+    mfaChangePasswordKey(userId),
+    new Date().toISOString(),
+    'EX',
+    MFA_CHANGE_PASSWORD_TTL_SECONDS,
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    message: 'MFA verification successful',
+    data: {
+      action,
+      expiresInSeconds: MFA_CHANGE_PASSWORD_TTL_SECONDS,
+    },
+  });
+});
+
 export const MFAControllers = {
   setupMFA,
   verifySetup,
@@ -361,4 +360,5 @@ export const MFAControllers = {
   disableMFA,
   getMFAStatus,
   regenerateBackupCodes,
+  verifySensitiveAction,
 };

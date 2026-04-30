@@ -23,7 +23,7 @@ export const initNotificationSocket = (io: Server): void => {
 
     try {
       // Add connection to socket manager
-      await socketManager.addConnection(userId, socket.id);
+      await socketManager.addConnection(userId, socket.id, socket.data.deviceId);
 
       // Get last disconnected time for reconnection handling
       const lastDisconnectedAt = await socketManager.getLastDisconnectedAt(userId);

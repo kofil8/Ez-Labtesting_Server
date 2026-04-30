@@ -11,7 +11,7 @@ const verifySetup = z.object({
       .string({
         required_error: 'Verification code is required',
       })
-      .length(6, 'Verification code must be 6 digits'),
+      .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
   }),
 });
 
@@ -24,7 +24,7 @@ const verifyMFA = z.object({
       .string({
         required_error: 'Verification code is required',
       })
-      .length(6, 'Verification code must be 6 digits'),
+      .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
   }),
 });
 
@@ -47,7 +47,7 @@ const disableMFA = z.object({
       .string({
         required_error: 'Verification code is required',
       })
-      .length(6, 'Verification code must be 6 digits'),
+      .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
   }),
 });
 
@@ -57,7 +57,18 @@ const regenerateBackupCodes = z.object({
       .string({
         required_error: 'Verification code is required',
       })
-      .length(6, 'Verification code must be 6 digits'),
+      .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
+  }),
+});
+
+const verifySensitiveAction = z.object({
+  body: z.object({
+    token: z
+      .string({
+        required_error: 'Verification code is required',
+      })
+      .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
+    action: z.enum(['CHANGE_PASSWORD']).default('CHANGE_PASSWORD'),
   }),
 });
 
@@ -67,4 +78,5 @@ export const mfaValidation = {
   verifyBackupCode,
   disableMFA,
   regenerateBackupCodes,
+  verifySensitiveAction,
 };

@@ -1,52 +1,45 @@
-import { Role } from '@prisma/client';
-import express from 'express';
-import auth from '../../middlewares/auth';
+import { Router } from 'express';
+import { createRateLimiter } from '../../middlewares/redisLimit';
 import validateRequest from '../../middlewares/validateRequest';
 import { LabCenterController } from './lab-centers.controller';
 import {
   autocompleteQuerySchema,
-  createLabCenterSchema,
   geocodeSchema,
+  labCenterParamsSchema,
   labCenterQuerySchema,
+  nationwideLabQuerySchema,
   placeDetailsParamsSchema,
-  updateLabCenterSchema,
 } from './lab-centers.validation';
 
-const router = express.Router();
+const router = Router();
+const publicLocatorLimiter = createRateLimiter(60, 10, 'lab-centers');
+const autocompleteLimiter = createRateLimiter(80, 10, 'lab-centers-autocomplete');
 
-// Public routes
-router.get('/', validateRequest(labCenterQuerySchema), LabCenterController.getLabCenters);
-
-// Geocode route MUST come before :id to avoid route collision
-router.post('/geocode', validateRequest(geocodeSchema), LabCenterController.geocode);
+router.get('/', publicLocatorLimiter, validateRequest(labCenterQuerySchema), LabCenterController.getLabCenters);
+router.get(
+  '/nationwide',
+  publicLocatorLimiter,
+  validateRequest(nationwideLabQuerySchema),
+  LabCenterController.getNationwideLabCenters,
+);
+router.post('/geocode', publicLocatorLimiter, validateRequest(geocodeSchema), LabCenterController.geocode);
 router.get(
   '/autocomplete',
+  autocompleteLimiter,
   validateRequest(autocompleteQuerySchema),
   LabCenterController.autocomplete,
 );
 router.get(
   '/place-details/:placeId',
+  publicLocatorLimiter,
   validateRequest(placeDetailsParamsSchema),
   LabCenterController.getPlaceDetails,
 );
-
-router.get('/:id', LabCenterController.getLabCenterById);
-
-// Admin-only routes
-router.post(
-  '/',
-  auth(Role.SUPER_ADMIN, Role.ADMIN),
-  validateRequest(createLabCenterSchema),
-  LabCenterController.createLabCenter,
+router.get(
+  '/:labCenterId',
+  publicLocatorLimiter,
+  validateRequest(labCenterParamsSchema),
+  LabCenterController.getLabCenterById,
 );
-
-router.put(
-  '/:id',
-  auth(Role.SUPER_ADMIN, Role.ADMIN),
-  validateRequest(updateLabCenterSchema),
-  LabCenterController.updateLabCenter,
-);
-
-router.delete('/:id', auth(Role.SUPER_ADMIN, Role.ADMIN), LabCenterController.deleteLabCenter);
 
 export const LabCenterRoutes = router;

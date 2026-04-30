@@ -12,11 +12,14 @@ class SocketManager {
 
   // Map socketId to userId (reverse lookup)
   private socketUsers: Map<string, string> = new Map();
+  private socketDevices: Map<string, string> = new Map();
+
+  private lastDisconnectedAt: Map<string, Date> = new Map();
 
   /**
    * Add a connection when user connects
    */
-  async addConnection(userId: string, socketId: string): Promise<void> {
+  async addConnection(userId: string, socketId: string, deviceId?: string): Promise<void> {
     try {
       // Add to maps
       if (!this.userSockets.has(userId)) {
@@ -24,18 +27,11 @@ class SocketManager {
       }
       this.userSockets.get(userId)!.add(socketId);
       this.socketUsers.set(socketId, userId);
+      if (deviceId) {
+        this.socketDevices.set(socketId, deviceId);
+      }
 
-      // Update database connection timestamp
-      await prisma.userConnection.upsert({
-        where: { userId },
-        create: {
-          userId,
-          lastConnectedAt: new Date(),
-        },
-        update: {
-          lastConnectedAt: new Date(),
-        },
-      });
+      this.lastDisconnectedAt.delete(userId);
 
       console.log(`✅ User ${userId} connected (socket: ${socketId})`);
     } catch (error) {
@@ -59,17 +55,12 @@ class SocketManager {
         if (sockets.size === 0) {
           this.userSockets.delete(userId);
 
-          // Update last disconnected timestamp only when all sockets are gone
-          await prisma.userConnection.update({
-            where: { userId },
-            data: {
-              lastDisconnectedAt: new Date(),
-            },
-          });
+          this.lastDisconnectedAt.set(userId, new Date());
         }
       }
 
       this.socketUsers.delete(socketId);
+      this.socketDevices.delete(socketId);
       console.log(`🔌 Socket ${socketId} disconnected (user: ${userId})`);
     } catch (error) {
       console.error('Error removing connection:', error);
@@ -93,15 +84,11 @@ class SocketManager {
   }
 
   /**
-   * Get last disconnected timestamp from database
+   * Get last disconnected timestamp from in-memory connection state
    */
   async getLastDisconnectedAt(userId: string): Promise<Date | null> {
     try {
-      const connection = await prisma.userConnection.findUnique({
-        where: { userId },
-        select: { lastDisconnectedAt: true },
-      });
-      return connection?.lastDisconnectedAt || null;
+      return this.lastDisconnectedAt.get(userId) || null;
     } catch (error) {
       console.error('Error getting last disconnected time:', error);
       return null;
@@ -113,6 +100,23 @@ class SocketManager {
    */
   emitToUser(userId: string, event: string, data: any): boolean {
     const socketIds = this.getUserSockets(userId);
+
+    if (socketIds.length === 0) {
+      return false;
+    }
+
+    const io = getIO();
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit(event, data);
+    });
+
+    return true;
+  }
+
+  emitToUserDevice(userId: string, deviceId: string, event: string, data: any): boolean {
+    const socketIds = this.getUserSockets(userId).filter(
+      (socketId) => this.socketDevices.get(socketId) === deviceId,
+    );
 
     if (socketIds.length === 0) {
       return false;

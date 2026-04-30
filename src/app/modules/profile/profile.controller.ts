@@ -17,7 +17,7 @@ const getProfile = catchAsync(async (req: Request & { user?: any }, res: Respons
 const updateMyProfile = catchAsync(
   async (req: Request & { file?: Express.Multer.File }, res: Response) => {
     const id = req.user?.id as string;
-    const payload = req.body.bodyData;
+    const payload = req.body;
     const file = req.file as Express.Multer.File | undefined;
     const result = await ProfileService.updateMyProfileIntoDB(id, payload, file);
 
@@ -40,8 +40,18 @@ const changePassword = catchAsync(async (req: Request & { user?: any }, res: Res
   });
 });
 
+const deleteProfile = catchAsync(async (req: Request & { user?: any }, res: Response) => {
+  await ProfileService.deleteProfileFromDB(req.user);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Profile deleted successfully',
+  });
+});
+
 export const ProfileController = {
   getProfile,
   updateMyProfile,
   changePassword,
+  deleteProfile,
 };

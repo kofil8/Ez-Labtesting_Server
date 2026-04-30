@@ -37,7 +37,7 @@ export const sendToTokenSchema = z.object({
 });
 
 export const sendToUserSchema = z.object({
-  userId: z.union([z.string().regex(/^\d+$/), z.number()]),
+  userId: z.string().min(1, 'userId is required'),
   title: z.string().min(1, 'title is required'),
   body: z.string().optional().default(''),
   data: z.record(z.string()).optional().default({}),
@@ -121,10 +121,10 @@ export const validateBody =
  * Query validation middleware factory
  */
 export const validateQuery =
-  (schema: z.ZodTypeAny) => async (req: Request, _res: Response, next: NextFunction) => {
+  (schema: z.ZodTypeAny) => async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = await schema.parseAsync(req.query ?? {});
-      req.query = parsed as any;
+      res.locals.validatedQuery = parsed;
       return next();
     } catch (err) {
       return next(err);
@@ -135,10 +135,10 @@ export const validateQuery =
  * Params validation middleware factory
  */
 export const validateParams =
-  (schema: z.ZodTypeAny) => async (req: Request, _res: Response, next: NextFunction) => {
+  (schema: z.ZodTypeAny) => async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = await schema.parseAsync(req.params ?? {});
-      req.params = parsed as any;
+      res.locals.validatedParams = parsed;
       return next();
     } catch (err) {
       return next(err);

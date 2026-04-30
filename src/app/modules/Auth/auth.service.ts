@@ -1,6 +1,7 @@
+import { randomInt } from 'crypto';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
-import { Secret, SignOptions } from 'jsonwebtoken';
+import { Secret } from 'jsonwebtoken';
 import config from '../../../config';
 import { prisma } from '../../../config/db';
 import redisClient from '../../../config/redis';
@@ -12,12 +13,31 @@ import sentEmailUtility from '../../utils/sentEmailUtility';
 import { welcomeEmailTemplate } from '../../utils/welcomeEmailTemplate';
 import { NotificationService } from '../notifications/notifications.service';
 import logger from '../../utils/logger';
+import { parseExpiryToSeconds } from '../../utils/tokenExpiry';
+import {
+  buildLegacyRefreshSessionKey,
+  buildRefreshSessionKey,
+  deleteRefreshSessionByToken,
+  getTokenFingerprint,
+  issueAuthSessionTokens,
+  logAuthSessionEvent,
+  verifyRefreshTokenPayload,
+} from './auth.session';
+
+type LoginPayload = {
+  email?: string;
+  phoneNumber?: string;
+  password: string;
+  pushToken?: string;
+  platform?: string;
+};
 
 type RegisterPayload = {
   firstName: string;
   lastName: string;
   email: string;
   phoneNumber: string;
+  username?: string;
   gender: any;
   password: string;
   isVerified?: boolean;
@@ -28,6 +48,11 @@ type RegisterPayload = {
   state?: string;
   zipCode?: string;
 };
+
+const ACCESS_TOKEN_BLACKLIST_TTL = parseExpiryToSeconds(config.jwt.expires_in as string);
+const RESET_CODE_RESPONSE = 'If an account exists for that email, a reset code has been sent.';
+
+const generateOtp = () => randomInt(100000, 1000000).toString();
 
 const queueOtpEmail = (email: string, subject: string, text: string, html: string) => {
   void sentEmailUtility(email, subject, text, html).catch((error) => {
@@ -62,7 +87,7 @@ const registerUserToDB = async (payload: RegisterPayload) => {
     }
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOtp();
 
   const [hashedPassword, hashedOtp] = await Promise.all([
     bcrypt.hash(payload.password, Number(config.salt)),
@@ -77,6 +102,7 @@ const registerUserToDB = async (payload: RegisterPayload) => {
       password: hashedPassword,
       phoneNumber: payload.phoneNumber,
       isVerified: false,
+      username: payload.username,
       gender: payload.gender,
       dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined,
       addressLine1: payload.addressLine1,
@@ -133,7 +159,7 @@ const resendOTP = async (email: string) => {
 
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOtp();
 
   const hashedOtp = await bcrypt.hash(otp, 8);
 
@@ -168,8 +194,10 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
     where: { email },
     data: { isVerified: true },
     select: {
+      id: true,
       email: true,
       firstName: true,
+      lastName: true,
     },
   });
 
@@ -184,6 +212,16 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
   // Remove OTP after success
   await redisClient.del(`otp:${email}`);
 
+  try {
+    await NotificationService.sendTemplateNotification(verifiedUser.id, 'ACCOUNT_VERIFIED', {
+      userName: [verifiedUser.firstName, verifiedUser.lastName].filter(Boolean).join(' ') || 'there',
+      appLink: process.env.FRONTEND_URL || 'https://ezlabtesting.com',
+      clickAction: '/dashboard',
+    });
+  } catch (error) {
+    logger.error('Failed to send account verified notification', error);
+  }
+
   return { message: 'Email verified successfully' };
 };
 
@@ -191,27 +229,15 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
    LOGIN USER  + BRUTE-FORCE PROTECTION + TOKEN CREATION
 ------------------------------------------------------- */
 
-const loginUserFromDB = async (
-  payload: {
-    email?: string;
-    phoneNumber?: string;
-    password: string;
-    pushToken?: string;
-    platform?: string;
-  },
-  ip: string,
-) => {
+const loginUserFromDB = async (payload: LoginPayload, ip: string) => {
   const { password, pushToken, platform = 'web' } = payload;
 
-  // Validate that either email or phone number is provided
   if (!payload.email && !payload.phoneNumber) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Email or phone number is required to login');
   }
 
-  // Determine the identifier for login attempts tracking
   const loginIdentifier = payload.email || payload.phoneNumber!;
 
-  // 1️⃣ Check if account is locked
   const isLocked = await LoginAttemptService.isAccountLocked(loginIdentifier);
   if (isLocked) {
     throw new ApiError(
@@ -220,7 +246,6 @@ const loginUserFromDB = async (
     );
   }
 
-  // 2️⃣ Fetch user by email OR phone number
   const user = await prisma.user.findFirst({
     where: {
       OR: [
@@ -232,57 +257,48 @@ const loginUserFromDB = async (
       id: true,
       firstName: true,
       lastName: true,
+      username: true,
       email: true,
       phoneNumber: true,
+      password: true,
+      isVerified: true,
       role: true,
       createdAt: true,
       updatedAt: true,
       lastLogin: true,
-      password: true,
-      isVerified: true,
     },
   });
 
-  // 3️⃣ Invalid credentials → failed attempt
   if (!user) {
     await LoginAttemptService.recordFailedAttempt(loginIdentifier, ip);
     throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email/phone or password');
   }
 
-  // 4️⃣ Check email verification
   if (!user.isVerified) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Please verify your email before logging in.');
   }
 
-  // 5️⃣ Compare password
   const isCorrectPassword = await bcrypt.compare(password, user.password);
   if (!isCorrectPassword) {
     await LoginAttemptService.recordFailedAttempt(loginIdentifier, ip);
     throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid email/phone or password');
   }
 
-  // 6️⃣ Successful login → reset attempts
   await LoginAttemptService.resetAttempts(loginIdentifier, ip);
 
   const isFirstLogin = !user.lastLogin;
 
-  // 6️⃣.5 Update lastLogin timestamp
   await prisma.user.update({
     where: { id: user.id },
     data: { lastLogin: new Date() },
   });
 
-  // Remove password
-  const { password: _, ...userWithoutPassword } = user;
-
-  // Check if MFA is enabled for this user
   const userWithMFA = await prisma.user.findUnique({
     where: { id: user.id },
     select: { mfaEnabled: true },
   });
 
   if (userWithMFA?.mfaEnabled) {
-    // Generate temporary token for MFA verification (5 min expiry)
     const tempToken = jwtHelpers.signToken(
       { id: user.id, email: user.email, type: 'mfa_temp' },
       config.jwt.jwt_secret as Secret,
@@ -292,29 +308,23 @@ const loginUserFromDB = async (
     return {
       mfaRequired: true,
       tempToken,
-      user: userWithoutPassword,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+        lastLogin: user.lastLogin,
+      },
       isFirstLogin,
     };
   }
 
-  // 7️⃣ Generate access token
-  const accessToken = jwtHelpers.signToken(
+  const { accessToken, refreshToken } = await issueAuthSessionTokens(
     { id: user.id, email: user.email, role: user.role },
-    config.jwt.jwt_secret as Secret,
-    config.jwt.expires_in as SignOptions['expiresIn'],
+    { event: 'login-issue' },
   );
 
-  // 8️⃣ Generate refresh token
-  const refreshToken = jwtHelpers.signToken(
-    { id: user.id },
-    config.jwt.refresh_token_secret as Secret,
-    config.jwt.refresh_token_expires_in as SignOptions['expiresIn'],
-  );
-
-  // 9️⃣ Save refresh token in Redis
-  await redisClient.set(`refresh:${user.id}`, refreshToken, 'EX', 7 * 24 * 60 * 60);
-
-  // 🔥 10️⃣ Auto-register FCM push token (if provided)
   if (pushToken) {
     try {
       await NotificationService.registerToken(user.id, pushToken, platform);
@@ -323,10 +333,30 @@ const loginUserFromDB = async (
     }
   }
 
+  if (isFirstLogin) {
+    try {
+      await NotificationService.sendTemplateNotification(user.id, 'WELCOME', {
+        userName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'there',
+        appLink: process.env.FRONTEND_URL || 'https://ezlabtesting.com',
+        clickAction: '/dashboard',
+      });
+    } catch (error) {
+      logger.error('Failed to send welcome notification', error);
+    }
+  }
+
   return {
+    mfaRequired: false,
     accessToken,
     refreshToken,
-    user: userWithoutPassword,
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      lastLogin: user.lastLogin,
+    },
     isFirstLogin,
   };
 };
@@ -336,69 +366,125 @@ const loginUserFromDB = async (
 ------------------------------------------------------- */
 
 const refreshAccessToken = async (token: string) => {
-  let decoded;
+  let decoded: { id: string; sid?: string };
 
   try {
-    decoded = jwtHelpers.verifyToken(token, config.jwt.refresh_token_secret as Secret);
+    decoded = verifyRefreshTokenPayload(token);
   } catch {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid refresh token');
   }
 
-  // Check if token matches Redis
-  const storedToken = await redisClient.get(`refresh:${decoded.id}`);
-  if (!storedToken || storedToken !== token) {
-    throw new ApiError(httpStatus.UNAUTHORIZED, 'Session expired');
+  const tokenFingerprint = getTokenFingerprint(token);
+  let storedToken: string | null = null;
+  let sessionSid = decoded.sid;
+
+  if (sessionSid) {
+    const refreshKey = buildRefreshSessionKey(decoded.id, sessionSid);
+    storedToken = await redisClient.get(refreshKey);
+    const ttl = await redisClient.ttl(refreshKey);
+
+    logAuthSessionEvent('refresh-read', {
+      userId: decoded.id,
+      sid: sessionSid,
+      key: refreshKey,
+      hit: Boolean(storedToken),
+      ttl,
+      tokenFingerprint,
+    });
+  } else {
+    const legacyKey = buildLegacyRefreshSessionKey(decoded.id);
+    storedToken = await redisClient.get(legacyKey);
+    const ttl = await redisClient.ttl(legacyKey);
+
+    logAuthSessionEvent('refresh-read-legacy', {
+      userId: decoded.id,
+      sid: null,
+      key: legacyKey,
+      hit: Boolean(storedToken),
+      ttl,
+      tokenFingerprint,
+    });
+  }
+
+  if (!storedToken) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'No active session found');
+  }
+
+  if (storedToken !== token) {
+    logAuthSessionEvent('refresh-mismatch', {
+      userId: decoded.id,
+      sid: sessionSid ?? null,
+      tokenFingerprint,
+    });
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Refresh token mismatch');
   }
 
   const user = await prisma.user.findUnique({
     where: { id: decoded.id },
   });
 
-  if (!user) throw new ApiError(httpStatus.UNAUTHORIZED, 'User not found');
+  if (!user) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'User not found');
+  }
 
-  // Issue new access token
-  const newAccessToken = jwtHelpers.signToken(
+  if (!sessionSid) {
+    const legacyKey = buildLegacyRefreshSessionKey(decoded.id);
+    const rotatedSession = await issueAuthSessionTokens(
+      { id: user.id, email: user.email, role: user.role },
+      { event: 'refresh-migrate-legacy' },
+    );
+
+    await redisClient.del(legacyKey);
+
+    logAuthSessionEvent('refresh-legacy-migrated', {
+      userId: decoded.id,
+      previousKey: legacyKey,
+      newKey: rotatedSession.refreshKey,
+      sid: rotatedSession.sid,
+      tokenFingerprint,
+    });
+
+    return {
+      accessToken: rotatedSession.accessToken,
+      refreshToken: rotatedSession.refreshToken,
+    };
+  }
+
+  const rotatedSession = await issueAuthSessionTokens(
     { id: user.id, email: user.email, role: user.role },
-    config.jwt.jwt_secret as Secret,
-    config.jwt.expires_in as SignOptions['expiresIn'],
+    { sid: sessionSid, event: 'refresh-rotate' },
   );
 
-  // Issue new refresh token (rotation)
-  const newRefreshToken = jwtHelpers.signToken(
-    { id: user.id },
-    config.jwt.refresh_token_secret as Secret,
-    config.jwt.refresh_token_expires_in as SignOptions['expiresIn'],
-  );
-
-  await redisClient.set(`refresh:${user.id}`, newRefreshToken, 'EX', 7 * 24 * 60 * 60);
-
-  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  return {
+    accessToken: rotatedSession.accessToken,
+    refreshToken: rotatedSession.refreshToken,
+  };
 };
 
 /* -------------------------------------------------------
    LOGOUT USER (remove refresh token + blacklist access token)
 ------------------------------------------------------- */
 
-const logoutUser = async (userId: string, accessToken: string, pushToken?: string) => {
-  // 1️⃣ Remove refresh token
-  await redisClient.del(`refresh:${userId}`);
+const logoutUser = async (
+  userId: string,
+  accessToken: string,
+  refreshToken?: string | null,
+  pushToken?: string,
+) => {
+  await deleteRefreshSessionByToken(userId, refreshToken);
+  await redisClient.set(`blacklist:${accessToken}`, '1', 'EX', ACCESS_TOKEN_BLACKLIST_TTL);
 
-  // 2️⃣ Blacklist access token for 1 hour
-  await redisClient.set(`blacklist:${accessToken}`, '1', 'EX', 60 * 60);
-
-  // 🔥 3️⃣ Auto-remove push token
   if (pushToken) {
-    await NotificationService.unregisterToken(pushToken);
+    try {
+      await NotificationService.unregisterToken(userId, pushToken);
+    } catch (error) {
+      logger.error('Failed to remove push token during logout', error);
+    }
   }
 };
 
 // Forgot Password
 const forgotPassword = async (email: string) => {
-  const user = await prisma.user.findUnique({ where: { email } });
-
-  if (!user) throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
-
-  // Anti-spam (reuse logic if possible, or simple check)
   const cooldownKey = `otp_forgot_cooldown:${email}`;
   if (await redisClient.get(cooldownKey)) {
     throw new ApiError(429, 'Please wait 60 seconds before requesting another OTP.');
@@ -406,7 +492,12 @@ const forgotPassword = async (email: string) => {
 
   await redisClient.set(cooldownKey, '1', 'EX', 60);
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return { message: RESET_CODE_RESPONSE };
+  }
+
+  const otp = generateOtp();
 
   const hashedOtp = await bcrypt.hash(otp, 10);
 
@@ -421,23 +512,26 @@ const forgotPassword = async (email: string) => {
     emailTemplate(otp, 'Reset your password'),
   );
 
-  return { message: 'OTP sent to your email' };
+  return { message: RESET_CODE_RESPONSE };
 };
 
 // Reset Password
 const resetPassword = async (payload: { email: string; otp: string; newPassword: string }) => {
   const { email, otp, newPassword } = payload;
 
-  const hashedOtp = await redisClient.get(`otp_reset:${email}`);
+  const [user, hashedOtp] = await Promise.all([
+    prisma.user.findUnique({ where: { email } }),
+    redisClient.get(`otp_reset:${email}`),
+  ]);
 
-  if (!hashedOtp) {
-    throw new ApiError(400, 'OTP expired or invalid');
+  if (!user || !hashedOtp) {
+    throw new ApiError(400, 'Invalid or expired reset code');
   }
 
   const isValid = await bcrypt.compare(otp, hashedOtp);
 
   if (!isValid) {
-    throw new ApiError(400, 'Invalid OTP');
+    throw new ApiError(400, 'Invalid or expired reset code');
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, Number(config.salt));
@@ -448,6 +542,21 @@ const resetPassword = async (payload: { email: string; otp: string; newPassword:
   });
 
   await redisClient.del(`otp_reset:${email}`);
+
+  try {
+    await NotificationService.sendCustomNotification(
+      user.id,
+      'PASSWORD_RESET',
+      'Password Reset',
+      'Your password was reset successfully.',
+      {
+        userName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'there',
+        clickAction: '/login',
+      },
+    );
+  } catch (error) {
+    logger.error('Failed to send password reset notification', error);
+  }
 
   return { message: 'Password reset successfully' };
 };

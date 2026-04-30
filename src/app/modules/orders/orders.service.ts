@@ -1,1114 +1,1047 @@
-import { OrderStatus, Prisma } from '@prisma/client';
+import {
+  AccessSubmissionStatus,
+  OrderStatus,
+  OrderTrackingEventType,
+  PaymentMethodType,
+  PaymentStatus,
+  Prisma,
+  TrackingActorType,
+} from '@prisma/client';
 import httpStatus from 'http-status';
-import ApiError from '../../../app/errors/ApiErrors';
 import { env } from '../../../config/env';
 import { getIO } from '../../../config/socket';
 import { parseS3Url, signS3GetObject } from '../../../lib/s3Presign';
 import prisma from '../../../shared/prisma';
+import ApiError from '../../errors/ApiErrors';
 import { socketManager } from '../../helpers/socketManager';
 import { auditLogService } from '../../services/auditLog.service';
+import { cartService } from '../cart/cart.service';
+import { CartRepository } from '../cart/repositories/cart.repository';
+import { labProviderRegistryService } from '../lab-integration/services/lab-provider-registry.service';
+import { orderTrackingService } from '../order-tracking/services/order-tracking.service';
+import { orderPatientService, UpsertOrderPatientInput } from '../patients/order-patient/services/order-patient.service';
+import { promoCodesService } from '../promo-codes/services/promo-codes.service';
+import { requisitionsService } from '../requisitions/services/requisitions.service';
+import { NotificationService } from '../notifications/notifications.service';
+import { toOrderSummary } from './mappers/order.mapper';
+import { OrdersRepository } from './repositories/orders.repository';
+import { orderStateMachine } from './state-machine/order-state-machine';
 
-interface CreateOrderParams {
+type CreateDirectOrderParams = {
   userId: string | null;
   labTestId: string;
-  accessPayloadJson: Record<string, any>;
-}
+  accessPayloadJson?: Record<string, unknown>;
+  drawCenterId?: string | null;
+  laboratoryId?: string | null;
+  laboratoryCode?: string | null;
+};
 
-interface MarkOrderPaidParams {
+type CreateOrderFromCartParams = {
+  userId: string;
+  req: any;
+  patient: UpsertOrderPatientInput;
+  promoCode?: string;
+  drawCenterId?: string | null;
+  idempotencyKey?: string;
+  state?: string;
+};
+
+type MarkOrderPaidParams = {
   orderId: string;
   stripePaymentIntentId: string;
-}
+  paymentMethodType?: PaymentMethodType | null;
+  paymentSnapshotJson?: Prisma.InputJsonValue | null;
+  lastPaymentEventId?: string | null;
+};
 
-interface MarkLabOrderPlacedParams {
+type MarkLabOrderPlacedParams = {
   orderId: string;
-  accessOrderId: string;
+  accessOrderId?: string;
   requisitionPdfUrl?: string;
+  requisitionPdfPath?: string;
   labVisitInstructions?: string;
-  accessCsv?: string;
   confirmedLabLocation?: Record<string, unknown>;
-}
-
-const hasManualReviewFieldError = (error: unknown) => {
-  if (!(error instanceof Error)) return false;
-  return (
-    error.message.includes('Unknown argument `manualReviewRequired`') ||
-    error.message.includes('Unknown arg `manualReviewRequired`')
-  );
+  rawPayload?: Prisma.InputJsonValue | null;
+  rawResponse?: Prisma.InputJsonValue | null;
 };
 
-const mergeAccessPayloadWithConfirmedLocation = (
-  accessPayloadJson: unknown,
-  confirmedLabLocation?: Record<string, unknown>,
-): Prisma.InputJsonValue | typeof Prisma.JsonNull => {
-  if (!confirmedLabLocation || Object.keys(confirmedLabLocation).length === 0) {
-    if (accessPayloadJson === null) return Prisma.JsonNull;
-    if (
-      accessPayloadJson &&
-      typeof accessPayloadJson === 'object' &&
-      !Array.isArray(accessPayloadJson)
-    ) {
-      return accessPayloadJson as Prisma.InputJsonValue;
-    }
+const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-    return {} as Prisma.InputJsonValue;
-  }
-
-  const basePayload =
-    accessPayloadJson && typeof accessPayloadJson === 'object' && !Array.isArray(accessPayloadJson)
-      ? (accessPayloadJson as Record<string, unknown>)
-      : {};
-
-  return {
-    ...basePayload,
-    confirmedLabLocation,
-  } as Prisma.InputJsonValue;
+const buildOrderNumber = () => {
+  const timePart = Date.now().toString(36).toUpperCase();
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `EZ-${timePart}-${randomPart}`;
 };
+
+const toJson = (value: unknown) =>
+  value === undefined ? Prisma.JsonNull : (JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue);
+
+const toNullableJsonValue = (value: Prisma.InputJsonValue | null | undefined) =>
+  value === undefined || value === null ? Prisma.JsonNull : value;
 
 class OrderService {
-  private async emitTrackingUpdate(orderId: string): Promise<void> {
-    try {
-      const trackingStatus = await this.getOrderWithTrackingStatus(orderId);
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        select: { userId: true },
-      });
+  private readonly repository = new OrdersRepository();
+  private readonly cartRepository = new CartRepository();
 
-      if (order?.userId) {
-        socketManager.emitToUser(order.userId, 'order:tracking-update', trackingStatus);
+  private buildOrderNotificationData(order: Awaited<ReturnType<OrderService['getOrderById']>>, extra: Record<string, unknown> = {}) {
+    const patientName = [order.patient?.firstName, order.patient?.lastName].filter(Boolean).join(' ');
+
+    return {
+      orderId: order.orderNumber || order.id,
+      orderUuid: order.id,
+      userName: patientName || 'there',
+      amount: `${Number(order.total).toFixed(2)} ${order.currency}`,
+      testCount: String(order.orderItems?.length || 0),
+        clickAction: `/dashboard/customer/results/${order.id}`,
+      ...extra,
+    };
+  }
+
+  private async notifyOrder(
+    orderId: string,
+    type:
+      | 'ORDER_CREATED'
+      | 'PAYMENT_SUCCEEDED'
+      | 'PAYMENT_FAILED'
+      | 'ORDER_CONFIRMED'
+      | 'ORDER_IN_PROGRESS'
+      | 'REQUISITION_READY'
+      | 'LAB_SUBMISSION_FAILED'
+      | 'MANUAL_REVIEW_REQUIRED',
+    extra: Record<string, unknown> = {},
+  ) {
+    try {
+      const order = await this.getOrderById(orderId);
+      if (!order.userId) {
+        return;
       }
 
-      const io = getIO();
-      io.to(`order:${orderId}`).emit('order:tracking-update', trackingStatus);
+      await NotificationService.sendTemplateNotification(
+        order.userId,
+        type,
+        this.buildOrderNotificationData(order, extra),
+      );
     } catch (error) {
-      console.error('[OrderService] Failed to emit tracking update:', error);
+      console.error(`[OrderService] Failed to send ${type} notification`, error);
     }
   }
 
-  async publishTrackingUpdate(orderId: string): Promise<void> {
-    await this.emitTrackingUpdate(orderId);
+  private computeProcessingFee(subtotal: number) {
+    const percent = Number(env.PROCESSING_FEE_PERCENT || 0);
+    const flat = Number(env.PROCESSING_FEE_FLAT || 0);
+    return round2((subtotal * percent) / 100 + flat);
   }
 
-  /**
-   * Create a new order in PENDING_PAYMENT status (tamper-proof totals).
-   * Totals are computed server-side from the Test price + configured fees.
-   */
-  async createOrder(params: CreateOrderParams) {
-    const { userId, labTestId, accessPayloadJson } = params;
+  private async emitTrackingUpdate(orderId: string) {
+    try {
+      const tracking = await this.getOrderWithTrackingStatus(orderId);
+      const order = await this.repository.findById(orderId);
+      if (order?.userId) {
+        socketManager.emitToUser(order.userId, 'order:tracking-update', tracking);
+      }
 
-    // Validate test exists
-    const test = await prisma.test.findUnique({
-      where: { id: labTestId },
-      select: { id: true, testName: true, price: true, isActive: true, isPublished: true },
+      getIO().to(`order:${orderId}`).emit('order:tracking-update', tracking);
+    } catch (error) {
+      console.error('[OrderService] Failed to emit tracking update', error);
+    }
+  }
+
+  private async transitionOrderStatus(
+    orderId: string,
+    nextStatus: OrderStatus,
+    params?: {
+      actorType?: TrackingActorType;
+      actorId?: string | null;
+      eventType?: OrderTrackingEventType;
+      message?: string;
+      tx?: Prisma.TransactionClient;
+      updateData?: Prisma.OrderUpdateInput;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    const db = params?.tx || prisma;
+    const current = await db.order.findUnique({
+      where: { id: orderId },
+      select: { orderStatus: true },
     });
 
-    if (!test || !test.isActive || !test.isPublished) {
+    if (!current) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    orderStateMachine.assertTransition(current.orderStatus, nextStatus);
+
+    const updated = await db.order.update({
+      where: { id: orderId },
+      data: {
+        orderStatus: nextStatus,
+        currentTrackingStep: orderStateMachine.getStep(nextStatus),
+        trackingUpdatedAt: new Date(),
+        lastTransitionedAt: new Date(),
+        ...(params?.updateData || {}),
+      },
+      include: {
+        patient: true,
+        orderItems: true,
+        requisitions: true,
+        drawCenter: true,
+        laboratory: true,
+      },
+    });
+
+    await orderTrackingService.track(
+      {
+        orderId,
+        eventType: params?.eventType || 'ORDER_CREATED',
+        previousStatus: current.orderStatus,
+        nextStatus,
+        actorType: params?.actorType || 'SYSTEM',
+        actorId: params?.actorId || null,
+        message: params?.message,
+        metadata: params?.metadata || null,
+      },
+      db,
+    );
+
+    return updated;
+  }
+
+  private distributeDiscountAcrossItems(
+    items: Awaited<ReturnType<CartRepository['findUserCart']>>,
+    totalDiscount: number,
+  ) {
+    const subtotal = items.reduce(
+      (sum, item) => sum + Number(item.effectiveUnitPrice) * item.quantity,
+      0,
+    );
+
+    let remaining = round2(totalDiscount);
+
+    return items.map((item, index) => {
+      const lineSubtotal = round2(Number(item.effectiveUnitPrice) * item.quantity);
+      const proportional =
+        index === items.length - 1 || subtotal === 0
+          ? remaining
+          : round2((lineSubtotal / subtotal) * totalDiscount);
+      remaining = round2(remaining - proportional);
+
+      return {
+        itemId: item.id,
+        discountAmount: proportional,
+      };
+    });
+  }
+
+  async createOrderFromCart(params: CreateOrderFromCartParams) {
+    const cart = await cartService.validateCart({
+      userId: params.userId,
+      req: params.req,
+      state: params.state || params.patient.state || undefined,
+      promoCode: params.promoCode,
+    });
+
+    const cartItems = await this.cartRepository.findUserCart(params.userId);
+    if (!cartItems.length) {
+      throw new ApiError(httpStatus.BAD_REQUEST, 'Cart is empty');
+    }
+
+    const existing = params.idempotencyKey
+      ? await prisma.order.findFirst({
+          where: { userId: params.userId, idempotencyKey: params.idempotencyKey },
+        })
+      : null;
+    if (existing) {
+      return this.getOrderById(existing.id);
+    }
+
+    const processingFee = this.computeProcessingFee(cart.total);
+    const total = round2(cart.total + processingFee);
+    const itemDiscounts = this.distributeDiscountAcrossItems(cartItems, cart.discount);
+
+    const created = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.create({
+        data: {
+          userId: params.userId,
+          laboratoryId: cart.laboratoryId!,
+          drawCenterId: params.drawCenterId || cartItems[0]?.drawCenterId || null,
+          orderNumber: buildOrderNumber(),
+          currency: cartItems[0]?.currency || 'USD',
+          subtotal: cart.subtotal,
+          processingFee,
+          discount: cart.discount,
+          total,
+          paymentStatus: PaymentStatus.PENDING,
+          orderStatus: OrderStatus.PENDING_PAYMENT,
+          accessSubmissionStatus: AccessSubmissionStatus.NOT_SUBMITTED,
+          customerEmailSnapshot: params.patient.email || null,
+          customerPhoneSnapshot: params.patient.phoneNumber || null,
+          pricingSnapshotJson: toJson({
+            subtotal: cart.subtotal,
+            discount: cart.discount,
+            processingFee,
+            total,
+            promoCode: cart.promoCode,
+            promoClamped: cart.promoClamped,
+          }),
+          idempotencyKey: params.idempotencyKey || null,
+          currentTrackingStep: orderStateMachine.getStep(OrderStatus.PENDING_PAYMENT),
+          trackingUpdatedAt: new Date(),
+          patient: {
+            create: {
+              relationToUser: params.patient.relationToUser || 'SELF',
+              firstName: params.patient.firstName.trim(),
+              lastName: params.patient.lastName.trim(),
+              dateOfBirth: params.patient.dateOfBirth || null,
+              gender: params.patient.gender || null,
+              phoneNumber: params.patient.phoneNumber || null,
+              email: params.patient.email || null,
+              addressLine1: params.patient.addressLine1 || null,
+              addressLine2: params.patient.addressLine2 || null,
+              city: params.patient.city || null,
+              state: params.patient.state || null,
+              zipCode: params.patient.zipCode || null,
+              metadata:
+                params.patient.metadata === undefined
+                  ? Prisma.JsonNull
+                  : (params.patient.metadata as Prisma.InputJsonValue),
+            },
+          },
+          orderItems: {
+            create: cartItems.map((item) => {
+              const itemDiscount = itemDiscounts.find((entry) => entry.itemId === item.id)?.discountAmount || 0;
+              const lineDiscountPerUnit = round2(itemDiscount / item.quantity);
+
+              return {
+                testId: item.testId,
+                labTestId: item.labTestId,
+                labTestCode: item.labTest.labTestCode,
+                testName: item.test.name,
+                laboratoryName: item.laboratory.name,
+                quantity: item.quantity,
+                baseRetailPrice: item.baseRetailPrice,
+                effectiveUnitPrice: item.effectiveUnitPrice,
+                discountAmount: itemDiscount,
+                price: round2((Number(item.effectiveUnitPrice) - lineDiscountPerUnit) * item.quantity),
+                labCost: item.labTest.labCost,
+                currency: item.currency,
+                pricingSnapshotJson: toJson({
+                  quantity: item.quantity,
+                  unitPrice: item.effectiveUnitPrice,
+                  baseRetailPrice: item.baseRetailPrice,
+                  discountAmount: itemDiscount,
+                }),
+              };
+            }),
+          },
+        },
+        include: {
+          patient: true,
+          orderItems: true,
+          requisitions: true,
+          drawCenter: true,
+          laboratory: true,
+        },
+      });
+
+      if (params.promoCode) {
+        const promoResult = await promoCodesService.validateForCheckout({
+          code: params.promoCode,
+          subtotal: cart.subtotal,
+          items: cartItems.map((item) => ({
+            quantity: item.quantity,
+            effectiveUnitPrice: Number(item.effectiveUnitPrice),
+            labCost: Number(item.labTest.labCost),
+          })),
+        });
+
+        await tx.orderPromoCode.create({
+          data: {
+            orderId: order.id,
+            promoCodeId: promoResult.promo.id,
+            appliedCode: promoResult.promo.code,
+            discountType: promoResult.promo.discountType,
+            discountValue: promoResult.promo.discountValue,
+            pricingStrategy: promoResult.promo.pricingStrategy,
+            discountAmount: promoResult.appliedDiscount,
+          },
+        });
+
+        await tx.promoCode.update({
+          where: { id: promoResult.promo.id },
+          data: {
+            usedCount: {
+              increment: 1,
+            },
+          },
+        });
+      }
+
+      await orderTrackingService.track(
+        {
+          orderId: order.id,
+          eventType: 'ORDER_CREATED',
+          previousStatus: null,
+          nextStatus: OrderStatus.PENDING_PAYMENT,
+          actorType: 'CUSTOMER',
+          actorId: params.userId,
+          message: 'Order created from cart and awaiting payment',
+          metadata: {
+            itemCount: cartItems.length,
+            promoCode: params.promoCode || null,
+          },
+        },
+        tx,
+      );
+
+      return order;
+    });
+
+    await this.cartRepository.deleteManyByUserId(params.userId);
+    await this.emitTrackingUpdate(created.id);
+    await this.notifyOrder(created.id, 'ORDER_CREATED');
+    return this.getOrderById(created.id);
+  }
+
+  async createOrder(params: CreateDirectOrderParams) {
+    const labTest = await prisma.labTest.findFirst({
+      where: {
+        OR: [{ id: params.labTestId }, { testId: params.labTestId }],
+        isAvailable: true,
+        isVisible: true,
+        laboratory: {
+          isActive: true,
+          isVisibleToCustomers: true,
+          ...(params.laboratoryId ? { id: params.laboratoryId } : {}),
+          ...(params.laboratoryCode ? { code: params.laboratoryCode } : {}),
+        },
+      },
+      include: {
+        laboratory: true,
+        test: true,
+      },
+      orderBy: [{ salePrice: 'asc' }, { retailPrice: 'asc' }],
+    });
+
+    if (!labTest) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Lab test not found');
     }
 
-    const { subtotal, processingFee, total } = this.computeTotals(test.price);
-    const order = await prisma.order.create({
-      data: {
-        userId,
-        labTestId,
-        status: OrderStatus.PENDING_PAYMENT,
-        subtotal,
-        processingFee,
-        total,
-        accessPayloadJson,
-        stripePaymentIntentId: null,
-        currentTrackingStep: 1,
-      },
-      include: {
-        test: {
-          select: { id: true, testName: true, price: true },
-        },
-        user: {
-          select: { id: true, email: true, firstName: true, lastName: true },
-        },
-      },
-    });
+    const patient = (params.accessPayloadJson?.patient || {}) as Record<string, unknown>;
 
-    await this.recordTrackingEvent(order.id, 1, 'pending', 'Order created and awaiting payment');
-    await this.emitTrackingUpdate(order.id);
+    const createdOrderId = await prisma.$transaction(async (tx) => {
+      const subtotal = round2(Number(labTest.salePrice ?? labTest.retailPrice));
+      const processingFee = this.computeProcessingFee(subtotal);
+      const total = round2(subtotal + processingFee);
 
-    return order;
-  }
-
-  private computeTotals(basePrice: number) {
-    // Fees are configurable via env; default 0 to keep backward compatible.
-    // IMPORTANT: round to 2 decimals to match UI expectations.
-    const percent = Number(process.env.PROCESSING_FEE_PERCENT || 0);
-    const flat = Number(process.env.PROCESSING_FEE_FLAT || 0);
-
-    const subtotal = this.round2(basePrice);
-    const processingFee = this.round2((subtotal * percent) / 100 + flat);
-    const total = this.round2(subtotal + processingFee);
-
-    return { subtotal, processingFee, total };
-  }
-
-  private round2(value: number) {
-    return Math.round(value * 100) / 100;
-  }
-
-  /**
-   * Mark order as PAID (idempotent - only updates if in PENDING_PAYMENT status)
-   */
-  async markOrderPaid(params: MarkOrderPaidParams) {
-    const { orderId, stripePaymentIntentId } = params;
-
-    // Find order
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true, stripePaymentIntentId: true },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    // Idempotent check - already paid with same payment intent
-    if (
-      order.status === OrderStatus.PAID &&
-      order.stripePaymentIntentId === stripePaymentIntentId
-    ) {
-      return await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+      const order = await tx.order.create({
+        data: {
+          userId: params.userId,
+          laboratoryId: labTest.laboratoryId,
+          drawCenterId: params.drawCenterId || null,
+          orderNumber: buildOrderNumber(),
+          currency: labTest.currency,
+          subtotal,
+          processingFee,
+          total,
+          paymentStatus: PaymentStatus.PENDING,
+          orderStatus: OrderStatus.PENDING_PAYMENT,
+          accessSubmissionStatus: AccessSubmissionStatus.NOT_SUBMITTED,
+          accessPayloadJson: toJson(params.accessPayloadJson || {}),
+          customerEmailSnapshot:
+            typeof patient.email === 'string' ? patient.email : null,
+          customerPhoneSnapshot:
+            typeof patient.phone === 'string' ? patient.phone : null,
+          currentTrackingStep: orderStateMachine.getStep(OrderStatus.PENDING_PAYMENT),
+          trackingUpdatedAt: new Date(),
+          orderItems: {
+            create: [
+              {
+                testId: labTest.testId,
+                labTestId: labTest.id,
+                labTestCode: labTest.labTestCode,
+                testName: labTest.test.name,
+                laboratoryName: labTest.laboratory.name,
+                quantity: 1,
+                baseRetailPrice: labTest.retailPrice,
+                effectiveUnitPrice: labTest.salePrice ?? labTest.retailPrice,
+                discountAmount: 0,
+                price: labTest.salePrice ?? labTest.retailPrice,
+                labCost: labTest.labCost,
+                currency: labTest.currency,
+              },
+            ],
+          },
         },
       });
-    }
 
-    // Allow transition from PENDING_PAYMENT or PAYMENT_PROCESSING (ACH) to PAID
-    if (
-      order.status !== OrderStatus.PENDING_PAYMENT &&
-      order.status !== OrderStatus.PAYMENT_PROCESSING
-    ) {
-      throw new ApiError(
-        httpStatus.CONFLICT,
-        `Cannot mark order as paid. Current status: ${order.status}`,
+      await orderTrackingService.track(
+        {
+          orderId: order.id,
+          eventType: 'ORDER_CREATED',
+          previousStatus: null,
+          nextStatus: OrderStatus.PENDING_PAYMENT,
+          actorType: params.userId ? 'CUSTOMER' : 'SYSTEM',
+          actorId: params.userId,
+          message: 'Order created and awaiting payment',
+        },
+        tx,
       );
-    }
 
-    // Update to PAID
-    let updatedOrder;
-    try {
-      updatedOrder = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: OrderStatus.PAID,
-          stripePaymentIntentId,
-          paidAt: new Date(),
-          manualReviewRequired: false,
-        },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    } catch (error) {
-      if (!hasManualReviewFieldError(error)) throw error;
-
-      updatedOrder = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: OrderStatus.PAID,
-          stripePaymentIntentId,
-          paidAt: new Date(),
-        },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    }
-
-    await this.recordTrackingEvent(orderId, 2, 'completed', 'Payment processed successfully', {
-      stripePaymentIntentId,
-    });
-    await this.emitTrackingUpdate(orderId);
-
-    await auditLogService.record({
-      action: 'ORDER_PAYMENT_CONFIRMED',
-      resource: 'order',
-      resourceId: orderId,
-      details: {
-        status: updatedOrder.status,
-        stripePaymentIntentId,
-      },
+      return order.id;
     });
 
-    return updatedOrder;
+    await this.emitTrackingUpdate(createdOrderId);
+    await this.notifyOrder(createdOrderId, 'ORDER_CREATED');
+    return this.getOrderById(createdOrderId);
   }
 
-  /**
-   * Flag an order for manual review (e.g., amount mismatch, fraud signals).
-   * Does not change PAID status by itself.
-   */
-  async markManualReviewRequired(orderId: string, context?: Record<string, unknown>) {
-    let updated;
-    try {
-      updated = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          manualReviewRequired: true,
-        },
-      });
-    } catch (error) {
-      if (!hasManualReviewFieldError(error)) throw error;
-      // Schema might not have manualReviewRequired in older DBs; ignore.
-      updated = await prisma.order.findUnique({ where: { id: orderId } });
-    }
-
-    await this.recordTrackingEvent(
-      orderId,
-      2,
-      'warning',
-      'Order requires manual review before fulfillment',
-      context || {},
-    );
-    await this.emitTrackingUpdate(orderId);
-
-    await auditLogService.record({
-      action: 'ORDER_MARKED_MANUAL_REVIEW',
-      resource: 'order',
-      resourceId: orderId,
-      details: {
-        context: context || {},
-      },
-    });
-
-    return updated;
-  }
-
-  /**
-   * Mark order as LAB_ORDER_PLACED (idempotent - only updates if in PAID status)
-   */
-  async markLabOrderPlaced(params: MarkLabOrderPlacedParams) {
-    const {
-      orderId,
-      accessOrderId,
-      requisitionPdfUrl,
-      labVisitInstructions,
-      accessCsv,
-      confirmedLabLocation,
-    } = params;
-
-    // Find order
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true, accessOrderId: true, accessPayloadJson: true },
-    });
-
+  async markOrderPaymentProcessing(params: MarkOrderPaidParams) {
+    const order = await this.repository.findById(params.orderId);
     if (!order) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
     }
 
-    // Idempotent check - already placed with same ACCESS order ID
-    if (order.status === OrderStatus.LAB_ORDER_PLACED && order.accessOrderId === accessOrderId) {
-      return await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    }
-
-    // Only allow transition from PAID to LAB_ORDER_PLACED
-    if (order.status !== OrderStatus.PAID) {
-      throw new ApiError(
-        httpStatus.CONFLICT,
-        `Cannot mark lab order as placed. Current status: ${order.status}`,
-      );
-    }
-
-    // Update to LAB_ORDER_PLACED
-    let updatedOrder;
-    const accessPayloadJson = mergeAccessPayloadWithConfirmedLocation(
-      order.accessPayloadJson,
-      confirmedLabLocation,
-    );
-
-    try {
-      updatedOrder = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: OrderStatus.LAB_ORDER_PLACED,
-          accessOrderId,
-          requisitionPdfUrl,
-          labVisitInstructions,
-          manualReviewRequired: false,
-          accessCsv,
-          accessPayloadJson,
-          labOrderPlacedAt: new Date(),
-        },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    } catch (error) {
-      if (!hasManualReviewFieldError(error)) throw error;
-
-      updatedOrder = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: OrderStatus.LAB_ORDER_PLACED,
-          accessOrderId,
-          requisitionPdfUrl,
-          labVisitInstructions,
-          accessCsv,
-          accessPayloadJson,
-          labOrderPlacedAt: new Date(),
-        },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    }
-
-    await this.recordTrackingEvent(orderId, 3, 'completed', 'Lab order submitted successfully', {
-      accessOrderId,
-      requisitionPdfUrl,
-      confirmedLabLocation,
-    });
-    await this.emitTrackingUpdate(orderId);
-
-    await auditLogService.record({
-      action: 'ORDER_LAB_SUBMITTED',
-      resource: 'order',
-      resourceId: orderId,
-      details: {
-        status: updatedOrder.status,
-        accessOrderId,
-        hasRequisitionUrl: Boolean(requisitionPdfUrl),
-      },
-    });
-
-    return updatedOrder;
-  }
-
-  /**
-   * Mark order as COMPLETED
-   */
-  async markOrderCompleted(orderId: string) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    if (order.status !== OrderStatus.LAB_ORDER_PLACED) {
-      throw new ApiError(
-        httpStatus.CONFLICT,
-        `Cannot mark order as completed. Current status: ${order.status}`,
-      );
-    }
-
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.COMPLETED,
-      },
-      include: {
-        test: { select: { id: true, testName: true } },
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-      },
-    });
-
-    await this.recordTrackingEvent(orderId, 4, 'completed', 'Results are ready');
-    await this.emitTrackingUpdate(orderId);
-
-    return updatedOrder;
-  }
-
-  /**
-   * Mark order as PAYMENT_PROCESSING (ACH payments in transit).
-   * ACH Direct Debit is a delayed-notification method; funds are not
-   * immediately available. This status indicates the bank transfer has
-   * been initiated but not yet cleared.
-   */
-  async markOrderPaymentProcessing(params: { orderId: string; stripePaymentIntentId: string }) {
-    const { orderId, stripePaymentIntentId } = params;
-
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true, stripePaymentIntentId: true },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    // Idempotent: already in PAYMENT_PROCESSING with same PI
-    if (
-      order.status === OrderStatus.PAYMENT_PROCESSING &&
-      order.stripePaymentIntentId === stripePaymentIntentId
-    ) {
-      return await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          test: { select: { id: true, testName: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    }
-
-    // Only allow transition from PENDING_PAYMENT
-    if (order.status !== OrderStatus.PENDING_PAYMENT) {
-      throw new ApiError(
-        httpStatus.CONFLICT,
-        `Cannot mark order as payment processing. Current status: ${order.status}`,
-      );
-    }
-
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.PAYMENT_PROCESSING,
-        stripePaymentIntentId,
-      },
-      include: {
-        test: { select: { id: true, testName: true } },
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-      },
-    });
-
-    await this.recordTrackingEvent(
-      orderId,
-      2,
-      'processing',
-      'ACH bank transfer initiated — awaiting clearance (typically 2-5 business days)',
-      { stripePaymentIntentId },
-    );
-    await this.emitTrackingUpdate(orderId);
-
-    await auditLogService.record({
-      action: 'ORDER_PAYMENT_PROCESSING',
-      resource: 'order',
-      resourceId: orderId,
-      details: {
-        status: updatedOrder.status,
-        stripePaymentIntentId,
-        paymentMethod: 'ach_direct_debit',
-      },
-    });
-
-    return updatedOrder;
-  }
-
-  /**
-   * Handle ACH dispute (charge-back / return).
-   * Marks order for manual review and records the dispute details.
-   */
-  async markOrderDisputed(orderId: string, disputeDetails: Record<string, unknown>) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    // For disputes, flag manual review regardless of current status
-    let updated;
-    try {
-      updated = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          manualReviewRequired: true,
-        },
-      });
-    } catch (error) {
-      if (!hasManualReviewFieldError(error)) throw error;
-      updated = await prisma.order.findUnique({ where: { id: orderId } });
-    }
-
-    await this.recordTrackingEvent(
-      orderId,
-      0,
-      'warning',
-      'ACH payment disputed — funds may be reversed. Manual review required.',
-      disputeDetails,
-    );
-    await this.emitTrackingUpdate(orderId);
-
-    await auditLogService.record({
-      action: 'ORDER_ACH_DISPUTE_CREATED',
-      resource: 'order',
-      resourceId: orderId,
-      details: disputeDetails,
-    });
-
-    return updated;
-  }
-
-  /**
-   * Mark order as FAILED (for payment or lab order failures)
-   */
-  async markOrderFailed(orderId: string) {
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.FAILED,
-      },
-      include: {
-        test: { select: { id: true, testName: true } },
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-      },
-    });
-
-    await this.recordTrackingEvent(orderId, 0, 'failed', 'Order processing failed');
-    await this.emitTrackingUpdate(orderId);
-
-    await auditLogService.record({
-      action: 'ORDER_MARKED_FAILED',
-      resource: 'order',
-      resourceId: orderId,
-      details: {
-        status: updatedOrder.status,
-      },
-    });
-
-    return updatedOrder;
-  }
-
-  /**
-   * Keep paid order safe when ACCESS placement fails after retries.
-   * Do not move to FAILED because payment already succeeded.
-   */
-  async markAccessPlacementNeedsReview(orderId: string) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true, paidAt: true },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    if (order.status === OrderStatus.PAID) {
-      try {
-        const updated = await prisma.order.update({
-          where: { id: orderId },
-          data: {
-            status: OrderStatus.PAID,
-            paidAt: order.paidAt || new Date(),
-            manualReviewRequired: true,
-            labVisitInstructions:
-              'Payment received successfully. Lab order is delayed due to a temporary partner issue and has been queued for manual review.',
-          },
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            user: { select: { id: true, email: true, firstName: true, lastName: true } },
-          },
-        });
-
-        await this.recordTrackingEvent(
-          orderId,
-          2,
-          'needs_review',
-          'Payment received; lab placement moved to manual review',
-        );
-        await this.emitTrackingUpdate(orderId);
-
-        await auditLogService.record({
-          action: 'ORDER_ACCESS_RETRY_MANUAL_REVIEW',
-          resource: 'order',
-          resourceId: orderId,
-          details: {
-            status: updated.status,
-          },
-        });
-
-        return updated;
-      } catch (error) {
-        if (!hasManualReviewFieldError(error)) throw error;
-
-        const updated = await prisma.order.update({
-          where: { id: orderId },
-          data: {
-            status: OrderStatus.PAID,
-            paidAt: order.paidAt || new Date(),
-            labVisitInstructions:
-              'Payment received successfully. Lab order is delayed due to a temporary partner issue and has been queued for manual review.',
-          },
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            user: { select: { id: true, email: true, firstName: true, lastName: true } },
-          },
-        });
-
-        await this.recordTrackingEvent(
-          orderId,
-          2,
-          'needs_review',
-          'Payment received; lab placement moved to manual review',
-        );
-        await this.emitTrackingUpdate(orderId);
-
-        await auditLogService.record({
-          action: 'ORDER_ACCESS_RETRY_MANUAL_REVIEW',
-          resource: 'order',
-          resourceId: orderId,
-          details: {
-            status: updated.status,
-          },
-        });
-
-        return updated;
-      }
-    }
-
-    if (order.status === OrderStatus.LAB_ORDER_PLACED || order.status === OrderStatus.COMPLETED) {
-      return await prisma.order.findUnique({
-        where: { id: orderId },
-        include: {
-          test: { select: { id: true, testName: true, price: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-      });
-    }
-
-    throw new ApiError(
-      httpStatus.CONFLICT,
-      `Cannot mark ACCESS placement for manual review from status: ${order.status}`,
-    );
-  }
-
-  /**
-   * Prepare an order for ACCESS lab retry.
-   * Allowed statuses:
-   * - PAID: ready as-is
-   * - FAILED: restored to PAID for retry
-   */
-  async prepareOrderForAccessRetry(orderId: string) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        test: { select: { id: true, testName: true, price: true } },
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-      },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    if (order.status === OrderStatus.PAID) {
-      return order;
-    }
-
-    if (order.status === OrderStatus.FAILED) {
-      try {
-        const updated = await prisma.order.update({
-          where: { id: orderId },
-          data: {
-            status: OrderStatus.PAID,
-            paidAt: order.paidAt || new Date(),
-            manualReviewRequired: false,
-          },
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            user: { select: { id: true, email: true, firstName: true, lastName: true } },
-          },
-        });
-
-        await this.recordTrackingEvent(orderId, 2, 'processing', 'Retry queued for lab placement');
-        await this.emitTrackingUpdate(orderId);
-
-        return updated;
-      } catch (error) {
-        if (!hasManualReviewFieldError(error)) throw error;
-
-        const updated = await prisma.order.update({
-          where: { id: orderId },
-          data: {
-            status: OrderStatus.PAID,
-            paidAt: order.paidAt || new Date(),
-          },
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            user: { select: { id: true, email: true, firstName: true, lastName: true } },
-          },
-        });
-
-        await this.recordTrackingEvent(orderId, 2, 'processing', 'Retry queued for lab placement');
-        await this.emitTrackingUpdate(orderId);
-
-        return updated;
-      }
-    }
-
-    throw new ApiError(
-      httpStatus.CONFLICT,
-      `Cannot retry ACCESS placement for order in status: ${order.status}`,
-    );
-  }
-
-  /**
-   * Get order by ID
-   */
-  async getOrderById(orderId: string) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        test: true,
-        items: {
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            panel: { select: { id: true, name: true, basePrice: true, discountPercent: true } },
-          },
-        },
-        user: {
-          select: { id: true, email: true, firstName: true, lastName: true, phoneNumber: true },
-        },
-      },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    return order;
-  }
-
-  /**
-   * Get orders by user ID
-   */
-  async getOrdersByUserId(userId: string) {
-    const orders = await prisma.order.findMany({
-      where: { userId },
-      include: {
-        test: { select: { id: true, testName: true, price: true } },
-        items: {
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            panel: { select: { id: true, name: true, basePrice: true, discountPercent: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return orders;
-  }
-
-  /**
-   * Get orders that require manual review (admin/ops queue)
-   */
-  async getManualReviewOrders(limit = 100) {
-    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, limit)) : 100;
-
-    let orders;
-    try {
-      orders = await prisma.order.findMany({
-        where: {
-          manualReviewRequired: true,
-        },
-        include: {
-          test: { select: { id: true, testName: true, price: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: safeLimit,
-      });
-    } catch (error) {
-      if (!hasManualReviewFieldError(error)) throw error;
-
-      orders = await prisma.order.findMany({
-        where: {
-          status: OrderStatus.PAID,
-          labVisitInstructions: {
-            contains: 'manual review',
-            mode: 'insensitive',
-          },
-        },
-        include: {
-          test: { select: { id: true, testName: true, price: true } },
-          user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: safeLimit,
-      });
-    }
-
-    return orders;
-  }
-
-  async resolveManualReview(orderId: string, metadata?: Record<string, unknown>) {
-    let order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true },
-    });
-
-    if (!order) {
-      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-    }
-
-    if (order.status === OrderStatus.FAILED) {
-      const recovered = await this.prepareOrderForAccessRetry(orderId);
-      order = { id: recovered.id, status: recovered.status };
-    } else if (order.status !== OrderStatus.PAID) {
-      throw new ApiError(
-        httpStatus.CONFLICT,
-        `Only PAID or FAILED orders can be manually approved. Current status: ${order.status}`,
-      );
-    }
-
-    try {
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          manualReviewRequired: false,
-        },
-      });
-    } catch (error) {
-      if (!hasManualReviewFieldError(error)) throw error;
-    }
-
-    await this.recordTrackingEvent(
-      orderId,
-      2,
-      'processing',
-      'Manual review approved by operations. Lab placement retry queued.',
-      metadata || {},
-    );
-    await this.emitTrackingUpdate(orderId);
-
-    return await this.getOrderById(orderId);
-  }
-
-  /**
-   * Get latest order that can be resumed in checkout flow.
-   */
-  async getLatestResumableOrderForUser(userId: string) {
-    const order = await prisma.order.findFirst({
-      where: {
-        userId,
-        status: {
-          in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.LAB_ORDER_PLACED],
-        },
-      },
-      include: {
-        test: { select: { id: true, testName: true, price: true } },
-        items: {
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            panel: { select: { id: true, name: true, basePrice: true, discountPercent: true } },
-          },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    return order;
-  }
-
-  /**
-   * Get order by Stripe payment intent ID
-   */
-  async getOrderByPaymentIntentId(paymentIntentId: string) {
-    const order = await prisma.order.findUnique({
-      where: { stripePaymentIntentId: paymentIntentId },
-      include: {
-        test: true,
-        items: {
-          include: {
-            test: { select: { id: true, testName: true, price: true } },
-            panel: { select: { id: true, name: true, basePrice: true, discountPercent: true } },
-          },
-        },
-        user: {
-          select: { id: true, email: true, firstName: true, lastName: true },
-        },
-      },
-    });
-
-    return order; // May return null if not found
-  }
-
-  /**
-   * Record a tracking event for an order
-   */
-  async recordTrackingEvent(
-    orderId: string,
-    step: number,
-    status: string,
-    message?: string,
-    metadata?: Record<string, any>,
-  ) {
-    // Update tracking on order
     await prisma.order.update({
-      where: { id: orderId },
+      where: { id: params.orderId },
       data: {
-        currentTrackingStep: step,
-        trackingUpdatedAt: new Date(),
+        paymentStatus: PaymentStatus.PROCESSING,
+        stripePaymentIntentId: params.stripePaymentIntentId,
+        paymentMethodType: params.paymentMethodType || undefined,
       },
     });
 
-    // Create tracking event
-    const event = await prisma.orderTrackingEvent.create({
-      data: {
-        orderId,
-        step,
-        status,
-        message,
-        metadata,
-      },
+    await orderTrackingService.track({
+      orderId: params.orderId,
+      eventType: 'PAYMENT_INTENT_CREATED',
+      previousStatus: order.orderStatus,
+      nextStatus: order.orderStatus,
+      actorType: 'WEBHOOK',
+      message: 'Payment is processing',
     });
 
-    return event;
+    await this.emitTrackingUpdate(params.orderId);
+    return this.getOrderById(params.orderId);
   }
 
-  /**
-   * Get tracking events for an order
-   */
-  async getTrackingEvents(orderId: string) {
-    const events = await prisma.orderTrackingEvent.findMany({
-      where: { orderId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    return events;
-  }
-
-  /**
-   * Get order with tracking status formatted for frontend
-   */
-  async getOrderWithTrackingStatus(orderId: string) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        test: { select: { id: true, testName: true } },
-        items: {
-          include: {
-            test: { select: { id: true, testName: true } },
-            panel: { select: { id: true, name: true } },
-          },
-        },
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        labCenter: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            phone: true,
-            hours: true,
-            latitude: true,
-            longitude: true,
-          },
-        },
-      },
-    });
-
+  async markOrderPaid(params: MarkOrderPaidParams) {
+    const order = await this.repository.findById(params.orderId);
     if (!order) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
     }
 
-    // Map status to step format
-    const stepMapping: Record<string, number> = {
-      PENDING_PAYMENT: 1,
-      PAID: 2,
-      LAB_ORDER_PLACED: 3,
-      COMPLETED: 4,
-      FAILED: 0,
-    };
+    if (order.orderStatus === OrderStatus.AWAITING_USER_CONFIRMATION) {
+      return this.getOrderById(order.id);
+    }
 
-    const currentStep = stepMapping[order.status] || order.currentTrackingStep;
+    if (
+      order.orderStatus !== OrderStatus.PENDING_PAYMENT &&
+      order.orderStatus !== OrderStatus.PAYMENT_FAILED
+    ) {
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        `Order cannot be marked paid from status ${order.orderStatus}`,
+      );
+    }
+
+    await this.transitionOrderStatus(order.id, OrderStatus.AWAITING_USER_CONFIRMATION, {
+      actorType: 'WEBHOOK',
+      actorId: params.lastPaymentEventId || null,
+      eventType: 'PAYMENT_SUCCEEDED',
+      message: 'Payment succeeded and order is awaiting user confirmation',
+      updateData: {
+        paymentStatus: PaymentStatus.SUCCEEDED,
+        stripePaymentIntentId: params.stripePaymentIntentId,
+        paymentMethodType: params.paymentMethodType || undefined,
+        paymentSnapshotJson: toNullableJsonValue(params.paymentSnapshotJson),
+        lastPaymentEventId: params.lastPaymentEventId || null,
+        paidAt: new Date(),
+        manualReviewRequired: false,
+      },
+    });
+
+    await auditLogService.record({
+      action: 'ORDER_PAYMENT_SUCCEEDED',
+      resource: 'order',
+      resourceId: order.id,
+      details: {
+        stripePaymentIntentId: params.stripePaymentIntentId,
+      },
+    });
+
+    await this.emitTrackingUpdate(order.id);
+    await this.notifyOrder(order.id, 'PAYMENT_SUCCEEDED');
+    return this.getOrderById(order.id);
+  }
+
+  async markOrderFailed(orderId: string, reason = 'Payment failed') {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (order.orderStatus === OrderStatus.PAYMENT_FAILED) {
+      return this.getOrderById(orderId);
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.PAYMENT_FAILED, {
+      actorType: 'WEBHOOK',
+      eventType: 'PAYMENT_FAILED',
+      message: reason,
+      updateData: {
+        paymentStatus: PaymentStatus.FAILED,
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'PAYMENT_FAILED', { reason });
+    return this.getOrderById(orderId);
+  }
+
+  async markManualReviewRequired(orderId: string, metadata?: Record<string, unknown>) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    const nextStatus =
+      order.orderStatus === OrderStatus.MANUAL_REVIEW_REQUIRED
+        ? OrderStatus.MANUAL_REVIEW_REQUIRED
+        : OrderStatus.MANUAL_REVIEW_REQUIRED;
+
+    if (order.orderStatus !== OrderStatus.MANUAL_REVIEW_REQUIRED) {
+      await this.transitionOrderStatus(orderId, nextStatus, {
+        actorType: 'SYSTEM',
+        eventType: 'SUPPORT_TICKET_CREATED',
+        message: 'Order moved to manual review',
+        metadata,
+        updateData: {
+          manualReviewRequired: true,
+        },
+      });
+
+      await this.notifyOrder(orderId, 'MANUAL_REVIEW_REQUIRED', {
+        reason:
+          typeof metadata?.reason === 'string'
+            ? metadata.reason
+            : 'This order requires manual review',
+      });
+    }
+
+    return this.getOrderById(orderId);
+  }
+
+  async markOrderDisputed(orderId: string, metadata?: Record<string, unknown>) {
+    return this.markManualReviewRequired(orderId, metadata);
+  }
+
+  async confirmOrderByUser(orderId: string, actorId?: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (order.orderStatus === OrderStatus.READY_FOR_LAB_SUBMISSION) {
+      return this.getOrderById(orderId);
+    }
+
+    if (order.paymentStatus !== PaymentStatus.SUCCEEDED) {
+      throw new ApiError(httpStatus.CONFLICT, 'Order payment is not successful yet');
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.READY_FOR_LAB_SUBMISSION, {
+      actorType: 'CUSTOMER',
+      actorId: actorId || null,
+      eventType: 'USER_CONFIRMED_ORDER',
+      message: 'Customer confirmed the paid order for lab submission',
+      updateData: {
+        userConfirmedAt: new Date(),
+        placedAt: new Date(),
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'ORDER_CONFIRMED', {
+      appointmentDate: 'your selected lab visit',
+    });
+    return this.getOrderById(orderId);
+  }
+
+  async beginLabSubmission(orderId: string, actorType: TrackingActorType = 'WORKER') {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (order.orderStatus === OrderStatus.LAB_SUBMISSION_IN_PROGRESS) {
+      return this.getOrderById(orderId);
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.LAB_SUBMISSION_IN_PROGRESS, {
+      actorType,
+      eventType: 'LAB_SUBMISSION_STARTED',
+      message: 'Lab submission started',
+      updateData: {
+        accessSubmissionStatus: AccessSubmissionStatus.PENDING,
+        labSubmissionAttempts: {
+          increment: 1,
+        },
+        lastLabSubmissionAttemptAt: new Date(),
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'ORDER_IN_PROGRESS');
+    return this.getOrderById(orderId);
+  }
+
+  async markLabOrderPlaced(params: MarkLabOrderPlacedParams) {
+    const order = await this.repository.findById(params.orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    const updated = await this.transitionOrderStatus(params.orderId, OrderStatus.REQUISITION_READY, {
+      actorType: 'WORKER',
+      eventType: 'LAB_SUBMISSION_SUCCEEDED',
+      message: 'Lab submission succeeded and requisition is ready',
+      updateData: {
+        accessSubmissionStatus: AccessSubmissionStatus.SUBMITTED,
+        accessOrderId: params.accessOrderId || null,
+        requisitionPdfUrl: params.requisitionPdfUrl || null,
+        requisitionPdfPath: params.requisitionPdfPath || null,
+        labVisitInstructions: params.labVisitInstructions || null,
+        labSubmissionPayloadJson: toNullableJsonValue(params.rawPayload),
+        labSubmissionResponseJson: toNullableJsonValue(params.rawResponse),
+        accessResponseJson: toNullableJsonValue(params.rawResponse),
+        submittedToLabAt: new Date(),
+        labOrderPlacedAt: new Date(),
+      },
+    });
+
+    await requisitionsService.create({
+      orderId: updated.id,
+      orderItemId: updated.orderItems[0]?.id || null,
+      laboratoryId: updated.laboratoryId,
+      providerCode: updated.laboratory.code,
+      requisitionNumber: params.accessOrderId || null,
+      requisitionPdfUrl: params.requisitionPdfUrl || null,
+      requisitionPdfPath: params.requisitionPdfPath || null,
+      labOrderId: params.accessOrderId || null,
+      drawCenterSnapshotJson: (
+        params.confirmedLabLocation ||
+        (updated.drawCenter
+          ? {
+              id: updated.drawCenter.id,
+              name: updated.drawCenter.name,
+              addressLine1: updated.drawCenter.addressLine1,
+              city: updated.drawCenter.city,
+              state: updated.drawCenter.state,
+              zipCode: updated.drawCenter.zipCode,
+            }
+          : null)
+      ) as Prisma.InputJsonValue | null,
+      rawPayloadJson: (params.rawPayload || null) as Prisma.InputJsonValue | null,
+      rawResponseJson: (params.rawResponse || null) as Prisma.InputJsonValue | null,
+      status: 'READY',
+    });
+
+    await orderTrackingService.track({
+      orderId: updated.id,
+      eventType: 'REQUISITION_CREATED',
+      previousStatus: OrderStatus.REQUISITION_READY,
+      nextStatus: OrderStatus.REQUISITION_READY,
+      actorType: 'WORKER',
+      message: 'Requisition stored for download',
+    });
+
+    await this.emitTrackingUpdate(updated.id);
+    await this.notifyOrder(updated.id, 'REQUISITION_READY');
+    return this.getOrderById(updated.id);
+  }
+
+  async markLabSubmissionFailed(
+    orderId: string,
+    payload: {
+      errorMessage?: string;
+      errorCode?: string | null;
+      rawPayload?: Prisma.InputJsonValue | null;
+      rawResponse?: Prisma.InputJsonValue | null;
+    },
+  ) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.LAB_SUBMISSION_FAILED, {
+      actorType: 'WORKER',
+      eventType: 'LAB_SUBMISSION_FAILED',
+      message: payload.errorMessage || 'Lab submission failed',
+      metadata: {
+        errorCode: payload.errorCode || null,
+      },
+      updateData: {
+        accessSubmissionStatus: AccessSubmissionStatus.FAILED,
+        labSubmissionErrorCode: payload.errorCode || null,
+        labSubmissionErrorMessage: payload.errorMessage || null,
+        accessErrorMessage: payload.errorMessage || null,
+        labSubmissionPayloadJson: toNullableJsonValue(payload.rawPayload),
+        labSubmissionResponseJson: toNullableJsonValue(payload.rawResponse),
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'LAB_SUBMISSION_FAILED', {
+      reason: payload.errorMessage || 'Lab submission failed',
+    });
+    return this.getOrderById(orderId);
+  }
+
+  async requestManualReview(orderId: string, userId: string, note?: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (order.userId !== userId) {
+      throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden');
+    }
+
+    if (order.orderStatus !== OrderStatus.LAB_SUBMISSION_FAILED) {
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        'Manual review can only be requested after a lab submission failure',
+      );
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.MANUAL_REVIEW_REQUIRED, {
+      actorType: 'CUSTOMER',
+      actorId: userId,
+      eventType: 'SUPPORT_TICKET_CREATED',
+      message: 'Customer requested manual review',
+      metadata: {
+        note: note || null,
+      },
+      updateData: {
+        manualReviewRequired: true,
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'MANUAL_REVIEW_REQUIRED', {
+      reason: note || 'Customer requested manual review',
+    });
+    return this.getOrderById(orderId);
+  }
+
+  async adminResendSubmission(orderId: string, actorId?: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (
+      order.orderStatus !== OrderStatus.LAB_SUBMISSION_FAILED &&
+      order.orderStatus !== OrderStatus.MANUAL_REVIEW_REQUIRED
+    ) {
+      throw new ApiError(httpStatus.CONFLICT, 'Order is not eligible for manual resend');
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.READY_FOR_LAB_SUBMISSION, {
+      actorType: 'ADMIN',
+      actorId: actorId || null,
+      eventType: 'ADMIN_RESEND_TRIGGERED',
+      message: 'Admin re-queued lab submission',
+      updateData: {
+        manualReviewRequired: false,
+        accessSubmissionStatus: AccessSubmissionStatus.NOT_SUBMITTED,
+        labSubmissionErrorCode: null,
+        labSubmissionErrorMessage: null,
+        accessErrorMessage: null,
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    return this.getOrderById(orderId);
+  }
+
+  async prepareOrderForAccessRetry(orderId: string) {
+    return this.adminResendSubmission(orderId);
+  }
+
+  async resolveManualReview(orderId: string) {
+    return this.adminResendSubmission(orderId);
+  }
+
+  async markAccessPlacementNeedsReview(orderId: string) {
+    return this.markLabSubmissionFailed(orderId, {
+      errorMessage: 'Lab submission failed after retries and is awaiting customer/manual review',
+      errorCode: 'LAB_RETRY_EXHAUSTED',
+    });
+  }
+
+  async getOrderById(orderId: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    return {
+      ...toOrderSummary(order),
+      accessPayloadJson: order.accessPayloadJson,
+      accessResponseJson: order.accessResponseJson,
+      drawCenter: order.drawCenter,
+      laboratory: order.laboratory,
+      orderItems: order.orderItems.map((item) => ({
+        ...item,
+        price: Number(item.price),
+        baseRetailPrice: Number(item.baseRetailPrice),
+        effectiveUnitPrice: Number(item.effectiveUnitPrice),
+        discountAmount: Number(item.discountAmount),
+        labCost: Number(item.labCost),
+      })),
+      patient: order.patient,
+      requisitions: order.requisitions,
+      promoCodes: order.promoCodes.map((promo) => ({
+        id: promo.id,
+        appliedCode: promo.appliedCode,
+        discountAmount: Number(promo.discountAmount),
+        promoCodeId: promo.promoCodeId,
+      })),
+      total: Number(order.total),
+      subtotal: Number(order.subtotal),
+      processingFee: Number(order.processingFee),
+      discount: Number(order.discount),
+      tax: Number(order.tax),
+    };
+  }
+
+  async getOrderByPaymentIntentId(paymentIntentId: string) {
+    const order = await this.repository.findByPaymentIntentId(paymentIntentId);
+    return order ? this.getOrderById(order.id) : null;
+  }
+
+  async getOrdersByUserId(userId: string) {
+    const orders = await this.repository.listByUserId(userId);
+    return orders.map((order) => toOrderSummary(order));
+  }
+
+  async getManualReviewOrders(limit = 100) {
+    const orders = await this.repository.listManualReview(limit);
+    return orders.map((order) => ({
+      ...toOrderSummary(order),
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.orderStatus,
+    }));
+  }
+
+  async getLatestResumableOrderForUser(userId: string) {
+    const order = await this.repository.findLatestResumableByUserId(userId);
+    return order ? this.getOrderById(order.id) : null;
+  }
+
+  async getAllOrders(params: { page: number; limit: number }) {
+    const orders = await this.repository.listAll(params.page, params.limit);
+    return orders.map((order) => ({
+      ...toOrderSummary(order),
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.orderStatus,
+      drawCenter: order.drawCenter
+        ? {
+            id: order.drawCenter.id,
+            name: order.drawCenter.name,
+            address: [
+              order.drawCenter.addressLine1,
+              order.drawCenter.addressLine2,
+              order.drawCenter.city,
+              order.drawCenter.state,
+              order.drawCenter.zipCode,
+            ]
+              .filter(Boolean)
+              .join(', '),
+          }
+        : null,
+    }));
+  }
+
+  async getTrackingEvents(orderId: string) {
+    return orderTrackingService.list(orderId);
+  }
+
+  async getOrderWithTrackingStatus(orderId: string) {
+    const order = await this.getOrderById(orderId);
     const steps = [
       {
         step: 1,
-        label: 'Order Placed',
-        completed: currentStep >= 1,
+        label: 'Order Created',
+        completed: true,
         completedAt: order.createdAt,
       },
       {
         step: 2,
-        label: 'Payment Processed',
-        completed: currentStep >= 2,
+        label: 'Payment Completed',
+        completed: ['AWAITING_USER_CONFIRMATION', 'READY_FOR_LAB_SUBMISSION', 'LAB_SUBMISSION_IN_PROGRESS', 'LAB_SUBMISSION_FAILED', 'MANUAL_REVIEW_REQUIRED', 'SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
         completedAt: order.paidAt,
       },
       {
         step: 3,
-        label: 'Lab Order Submitted',
-        completed: currentStep >= 3,
-        completedAt: order.labOrderPlacedAt,
+        label: 'User Confirmed',
+        completed: ['READY_FOR_LAB_SUBMISSION', 'LAB_SUBMISSION_IN_PROGRESS', 'LAB_SUBMISSION_FAILED', 'MANUAL_REVIEW_REQUIRED', 'SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
+        completedAt: order.userConfirmedAt,
       },
       {
         step: 4,
-        label: 'Results Ready',
-        completed: currentStep >= 4,
-        completedAt: null,
+        label: 'Submitted To Lab',
+        completed: ['SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
+        completedAt: order.submittedToLabAt,
+      },
+      {
+        step: 5,
+        label: 'Requisition Ready',
+        completed: ['REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
+        completedAt: order.labOrderPlacedAt,
       },
     ];
 
     return {
       orderId: order.id,
-      status: order.status.toLowerCase().replace(/_/g, '_'),
-      currentStep,
+      status: order.orderStatus.toLowerCase(),
+      paymentStatus: order.paymentStatus.toLowerCase(),
+      currentStep: order.currentTrackingStep,
       steps,
-      items: order.items?.map((it) => ({
-        type: it.type,
-        quantity: it.quantity,
-        test: it.test ? { id: it.test.id, name: it.test.testName } : null,
-        panel: it.panel ? { id: it.panel.id, name: it.panel.name } : null,
-      })),
-      labLocation: order.labCenter
-        ? {
-            name: order.labCenter.name,
-            address: order.labCenter.address,
-            phone: order.labCenter.phone,
-            hours: order.labCenter.hours,
-            lat: order.labCenter.latitude,
-            lng: order.labCenter.longitude,
-          }
-        : null,
       requisitionUrl: order.requisitionPdfUrl,
-      estimatedResultsDate: null, // Will be calculated based on turnaround
-      lastUpdated: order.trackingUpdatedAt || order.updatedAt,
+      lastUpdated: order.updatedAt,
     };
   }
 
-  /**
-   * Returns a secure requisition download URL.
-   * - Always auth-gated by this endpoint.
-   * - If requisitionPdfUrl points to S3, returns a short-lived signed URL.
-   */
   async getRequisitionDownloadUrl(params: {
     orderId: string;
     requesterUserId?: string;
     isAdmin: boolean;
   }) {
-    const order = await prisma.order.findUnique({
-      where: { id: params.orderId },
-      select: { id: true, userId: true, requisitionPdfUrl: true },
-    });
-    if (!order) throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    const order = await this.repository.findById(params.orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
 
     if (!params.isAdmin && order.userId !== params.requesterUserId) {
       throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden');
     }
 
-    if (!order.requisitionPdfUrl) {
+    const requisition =
+      order.requisitions.find((item) => item.status === 'READY') ||
+      order.requisitions[0] ||
+      null;
+    const url = requisition?.requisitionPdfUrl || order.requisitionPdfUrl;
+
+    if (!url) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Requisition not available yet');
     }
 
-    const url = order.requisitionPdfUrl;
-
-    // If stored on S3, return signed URL (default 5 minutes)
     if (url.includes('amazonaws.com')) {
       const parsed = parseS3Url(url);
       if (parsed) {
-        return await signS3GetObject({
+        return signS3GetObject({
           bucket: parsed.bucket,
           key: parsed.key,
           expiresInSeconds: Number(env.REQUISITION_SIGNED_URL_TTL_SECONDS),
@@ -1116,37 +1049,48 @@ class OrderService {
       }
     }
 
-    // Fallback: return stored URL (still protected by this endpoint)
     return url;
   }
 
-  /**
-   * Admin function to get all orders with pagination
-   */
-  async getAllOrders(params: { page: number; limit: number }) {
-    const { page, limit } = params;
-    const skip = (page - 1) * limit;
-
-    const orders = await prisma.order.findMany({
-      skip,
-      take: limit,
-      include: {
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
-        labCenter: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            phone: true,
-            hours: true,
-            latitude: true,
-            longitude: true,
-          },
-        },
-      },
+  async recordTrackingEvent(
+    orderId: string,
+    step: number,
+    _status: string,
+    message?: string,
+    metadata?: Record<string, any>,
+  ) {
+    return orderTrackingService.track({
+      orderId,
+      eventType: 'ORDER_CREATED',
+      actorType: 'SYSTEM',
+      message,
+      metadata,
+      nextStatus: undefined,
     });
+  }
 
-    return orders;
+  async publishTrackingUpdate(orderId: string) {
+    await this.emitTrackingUpdate(orderId);
+  }
+
+  async expireStaleOrders(cutoff: Date) {
+    const orders = await this.repository.findStaleOrders(cutoff);
+
+    for (const order of orders) {
+      if (order.orderStatus === OrderStatus.CANCELLED || order.orderStatus === OrderStatus.COMPLETED) {
+        continue;
+      }
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          orderStatus: OrderStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      });
+    }
+
+    return { expiredCount: orders.length };
   }
 }
 

@@ -148,7 +148,7 @@ const notificationTemplates: NotificationTemplateData[] = [
       {
         name: 'resultLink',
         description: 'Link to view results',
-        example: 'https://app.ezlabtesting.com/results/123',
+        example: 'https://app.ezlabtesting.com/dashboard/customer/results/123',
       },
     ],
   },
@@ -178,7 +178,7 @@ const notificationTemplates: NotificationTemplateData[] = [
       {
         name: 'resultLink',
         description: 'Link to view results',
-        example: 'https://app.ezlabtesting.com/results/123',
+        example: 'https://app.ezlabtesting.com/dashboard/customer/results/123',
       },
     ],
   },
@@ -212,7 +212,7 @@ const notificationTemplates: NotificationTemplateData[] = [
       {
         name: 'resultLink',
         description: 'Link to view results',
-        example: 'https://app.ezlabtesting.com/results/123',
+        example: 'https://app.ezlabtesting.com/dashboard/customer/results/123',
       },
     ],
   },
@@ -543,18 +543,146 @@ const notificationTemplates: NotificationTemplateData[] = [
       { name: 'expiryTime', description: 'Link expiry time in minutes', example: '30' },
     ],
   },
+  {
+    type: 'PAYMENT_SUCCEEDED',
+    name: 'Payment Succeeded',
+    description: 'Notification sent when an order payment succeeds',
+    emailSubject: 'Payment Received for Order {{orderId}}',
+    emailBody: `<html>
+      <body style="font-family: Arial, sans-serif;">
+        <h2>Hi {{userName}},</h2>
+        <p>We received your payment for order {{orderId}}.</p>
+        <p><strong>Amount:</strong> {{amount}}</p>
+        <p>Your order is now awaiting confirmation.</p>
+      </body>
+    </html>`,
+    pushTitle: 'Payment Received',
+    pushBody: 'Payment for order {{orderId}} was successful',
+    variables: [
+      { name: 'orderId', description: 'Order number or ID', example: 'EZ-12345' },
+      { name: 'userName', description: 'Customer full name', example: 'John Doe' },
+      { name: 'amount', description: 'Payment amount', example: '$100.00' },
+    ],
+  },
+  {
+    type: 'PAYMENT_FAILED',
+    name: 'Payment Failed',
+    description: 'Notification sent when an order payment fails or is canceled',
+    emailSubject: 'Payment Issue for Order {{orderId}}',
+    emailBody: `<html>
+      <body style="font-family: Arial, sans-serif;">
+        <h2>Hi {{userName}},</h2>
+        <p>We could not complete payment for order {{orderId}}.</p>
+        <p><strong>Reason:</strong> {{reason}}</p>
+        <p>Please retry payment or contact support if the issue continues.</p>
+      </body>
+    </html>`,
+    pushTitle: 'Payment Issue',
+    pushBody: 'Payment for order {{orderId}} needs attention',
+    variables: [
+      { name: 'orderId', description: 'Order number or ID', example: 'EZ-12345' },
+      { name: 'userName', description: 'Customer full name', example: 'John Doe' },
+      { name: 'reason', description: 'Failure reason', example: 'Payment failed' },
+    ],
+  },
+  {
+    type: 'REQUISITION_READY',
+    name: 'Requisition Ready',
+    description: 'Notification sent when the lab requisition is ready',
+    emailSubject: 'Your Lab Requisition is Ready',
+    emailBody: `<html>
+      <body style="font-family: Arial, sans-serif;">
+        <h2>Hi {{userName}},</h2>
+        <p>Your requisition for order {{orderId}} is ready.</p>
+        <p>You can now visit the selected lab location and download your requisition from your account.</p>
+      </body>
+    </html>`,
+    pushTitle: 'Requisition Ready',
+    pushBody: 'Your requisition for order {{orderId}} is ready',
+    variables: [
+      { name: 'orderId', description: 'Order number or ID', example: 'EZ-12345' },
+      { name: 'userName', description: 'Customer full name', example: 'John Doe' },
+    ],
+  },
+  {
+    type: 'LAB_SUBMISSION_FAILED',
+    name: 'Lab Submission Failed',
+    description: 'Notification sent when lab submission fails',
+    emailSubject: 'Order {{orderId}} Needs Attention',
+    emailBody: `<html>
+      <body style="font-family: Arial, sans-serif;">
+        <h2>Hi {{userName}},</h2>
+        <p>We could not submit order {{orderId}} to the lab.</p>
+        <p><strong>Reason:</strong> {{reason}}</p>
+        <p>Our team will review the issue.</p>
+      </body>
+    </html>`,
+    pushTitle: 'Order Needs Attention',
+    pushBody: 'Lab submission for order {{orderId}} needs review',
+    variables: [
+      { name: 'orderId', description: 'Order number or ID', example: 'EZ-12345' },
+      { name: 'userName', description: 'Customer full name', example: 'John Doe' },
+      { name: 'reason', description: 'Failure reason', example: 'Lab submission failed' },
+    ],
+  },
+  {
+    type: 'MANUAL_REVIEW_REQUIRED',
+    name: 'Manual Review Required',
+    description: 'Notification sent when an order needs manual review',
+    emailSubject: 'Manual Review Started for Order {{orderId}}',
+    emailBody: `<html>
+      <body style="font-family: Arial, sans-serif;">
+        <h2>Hi {{userName}},</h2>
+        <p>Order {{orderId}} is being reviewed by our support team.</p>
+        <p><strong>Reason:</strong> {{reason}}</p>
+      </body>
+    </html>`,
+    pushTitle: 'Manual Review Started',
+    pushBody: 'Order {{orderId}} is being reviewed',
+    variables: [
+      { name: 'orderId', description: 'Order number or ID', example: 'EZ-12345' },
+      { name: 'userName', description: 'Customer full name', example: 'John Doe' },
+      { name: 'reason', description: 'Review reason', example: 'Payment review' },
+    ],
+  },
 ];
+
+const getAvailableNotificationTypes = async (): Promise<Set<string>> => {
+  const rows = await prisma.$queryRaw<Array<{ enum_value: string }>>`
+    SELECT e.enumlabel AS enum_value
+    FROM pg_type t
+    JOIN pg_enum e ON t.oid = e.enumtypid
+    WHERE t.typname = 'NotificationType'
+  `;
+
+  return new Set(rows.map((row) => row.enum_value));
+};
 
 /**
  * Seed notification templates into the database
  */
 export const seedNotificationTemplates = async (): Promise<void> => {
   try {
+    const availableTypes = await getAvailableNotificationTypes();
     let createdCount = 0;
     let updatedCount = 0;
+    let skippedCount = 0;
 
     for (const template of notificationTemplates) {
-      const result = await prisma.notificationTemplate.upsert({
+      if (!availableTypes.has(template.type)) {
+        skippedCount++;
+        logger.warn(
+          `Skipping template '${template.type}' because this value is missing from DB enum NotificationType.`,
+        );
+        continue;
+      }
+
+      const existing = await prisma.notificationTemplate.findUnique({
+        where: { type: template.type },
+        select: { id: true },
+      });
+
+      await prisma.notificationTemplate.upsert({
         where: { type: template.type },
         create: {
           type: template.type,
@@ -578,7 +706,7 @@ export const seedNotificationTemplates = async (): Promise<void> => {
         },
       });
 
-      if (result) {
+      if (existing) {
         updatedCount++;
       } else {
         createdCount++;
@@ -586,8 +714,14 @@ export const seedNotificationTemplates = async (): Promise<void> => {
     }
 
     logger.info(
-      `✅ Notification templates seeded: ${createdCount} created, ${updatedCount} updated`,
+      `✅ Notification templates seeded: ${createdCount} created, ${updatedCount} updated, ${skippedCount} skipped`,
     );
+
+    if (skippedCount > 0) {
+      logger.warn(
+        'Apply pending Prisma migrations to enable all template types (dev: `npx prisma migrate dev`, prod: `npx prisma migrate deploy`).',
+      );
+    }
   } catch (error) {
     logger.error('❌ Error seeding notification templates:', error);
     throw error;

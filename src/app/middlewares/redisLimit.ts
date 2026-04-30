@@ -5,8 +5,9 @@ import RedisStore from 'rate-limit-redis';
 /**
  * Helper to create a Redis-powered store for express-rate-limit
  */
-const redisRateLimitStore = () =>
+const redisRateLimitStore = (prefix: string) =>
   new RedisStore({
+    prefix,
     // Fix for TypeScript: use redisClient.call(...) instead of sendCommand
     sendCommand: (...args: string[]) =>
       (redisClient.call as (...args: any[]) => Promise<any>)(...args) as unknown as Promise<string>,
@@ -16,9 +17,10 @@ const redisRateLimitStore = () =>
  * Default rate limiter for general API usage
  */
 export const defaultLimiter = rateLimit({
-  store: redisRateLimitStore(),
+  store: redisRateLimitStore('rl:global:'),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'test' ? 10000 : 100,
+  skip: (req) => req.method === 'POST' && req.path === '/api/v1/cart/sync',
   message: {
     message: 'Too many requests from this IP, please try again later.',
   },
@@ -30,7 +32,7 @@ export const defaultLimiter = rateLimit({
  * Stricter limiter for login attempts
  */
 export const loginLimiter = rateLimit({
-  store: redisRateLimitStore(),
+  store: redisRateLimitStore('rl:login:'),
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: process.env.NODE_ENV === 'test' ? 1000 : 5,
   message: {
@@ -43,14 +45,27 @@ export const loginLimiter = rateLimit({
 /**
  * Custom dynamic limiter
  */
-export const createRateLimiter = (max: number, minutes: number) =>
+export const createRateLimiter = (
+  max: number,
+  minutes: number,
+  prefix = `custom:${max}:${minutes}`,
+  keyGenerator?: (req: any) => string,
+) =>
   rateLimit({
-    store: redisRateLimitStore(),
+    store: redisRateLimitStore(`rl:${prefix}:`),
     windowMs: minutes * 60 * 1000,
     max,
+    keyGenerator,
     message: {
       message: `Too many requests. Try again after ${minutes} minutes.`,
     },
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+export const cartSyncLimiter = createRateLimiter(120, 5, 'cart-sync', (req) => {
+  const userId = req.user?.id;
+  if (userId) return `user:${userId}`;
+
+  return 'anonymous';
+});

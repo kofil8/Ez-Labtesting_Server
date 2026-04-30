@@ -11,12 +11,20 @@ class CategoryController {
    */
   async getAllCategories(req: Request, res: Response, next: NextFunction) {
     try {
-      const categories = await categoryService.getAllCategories();
+      const categories = await categoryService.getAllCategories({
+        page: req.query.page as string | undefined,
+        limit: req.query.limit as string | undefined,
+        search: req.query.search as string | undefined,
+        isActive: req.query.isActive as string | undefined,
+        sortBy: req.query.sortBy as 'name' | 'createdAt' | 'updatedAt' | 'sortOrder' | undefined,
+        sortOrder: req.query.sortOrder as 'asc' | 'desc' | undefined,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,
         message: 'Categories retrieved successfully',
-        data: categories,
+        meta: categories.meta,
+        data: categories.data,
       });
     } catch (error) {
       next(error);
@@ -51,9 +59,9 @@ class CategoryController {
    */
   async createCategory(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name } = req.body;
+      const { name, slug } = req.body;
 
-      const category = await categoryService.createCategory({ name });
+      const category = await categoryService.createCategory({ name, slug });
 
       res.status(httpStatus.CREATED).json({
         success: true,

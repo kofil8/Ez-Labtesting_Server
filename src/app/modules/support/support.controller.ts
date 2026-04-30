@@ -4,6 +4,7 @@ import sendResponse from '../../helpers/sendResponse';
 import { supportService } from './support.service';
 import {
   AddMessageBody,
+  CreateManualReviewTicketBody,
   CreateTicketBody,
   GetTicketsQuery,
   TicketParams,
@@ -25,9 +26,25 @@ export const supportController = {
     });
   }),
 
+  createManualReviewTicket: catchAsync(async (req: Request, res: Response) => {
+    const authUser = (req as any).user;
+    const body = req.body as CreateManualReviewTicketBody;
+
+    const ticket = await supportService.createManualReviewTicket(authUser.id, authUser.role, body);
+
+    sendResponse(res, {
+      statusCode: 201,
+      success: true,
+      message: 'Manual review ticket created successfully',
+      data: ticket,
+    });
+  }),
+
   listTickets: catchAsync(async (req: Request, res: Response) => {
     const authUser = (req as any).user;
-    const query = req.query as unknown as GetTicketsQuery;
+    const query =
+      ((res.locals.validatedQuery as GetTicketsQuery | undefined) ||
+        (req.query as unknown as GetTicketsQuery));
 
     const result = await supportService.listTickets(authUser.id, authUser.role, query);
 
@@ -42,7 +59,9 @@ export const supportController = {
 
   getTicketById: catchAsync(async (req: Request, res: Response) => {
     const authUser = (req as any).user;
-    const { ticketId } = req.params as TicketParams;
+    const { ticketId } =
+      ((res.locals.validatedParams as TicketParams | undefined) ||
+        (req.params as TicketParams));
 
     const ticket = await supportService.getTicketById(ticketId, authUser.id, authUser.role);
 
@@ -56,7 +75,9 @@ export const supportController = {
 
   addMessage: catchAsync(async (req: Request, res: Response) => {
     const authUser = (req as any).user;
-    const { ticketId } = req.params as TicketParams;
+    const { ticketId } =
+      ((res.locals.validatedParams as TicketParams | undefined) ||
+        (req.params as TicketParams));
     const body = req.body as AddMessageBody;
 
     const message = await supportService.addMessage(ticketId, authUser.id, authUser.role, body);
@@ -71,7 +92,9 @@ export const supportController = {
 
   updateStatus: catchAsync(async (req: Request, res: Response) => {
     const authUser = (req as any).user;
-    const { ticketId } = req.params as TicketParams;
+    const { ticketId } =
+      ((res.locals.validatedParams as TicketParams | undefined) ||
+        (req.params as TicketParams));
     const body = req.body as UpdateStatusBody;
 
     const ticket = await supportService.updateStatus(ticketId, authUser.id, authUser.role, body);

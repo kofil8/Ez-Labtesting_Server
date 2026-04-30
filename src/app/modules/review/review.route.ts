@@ -1,33 +1,23 @@
-import { Role } from '@prisma/client';
 import express from 'express';
 import auth from '../../middlewares/auth';
 import { ReviewController } from './review.controller';
 
 const router = express.Router();
 
+// Protected read route
+router.get('/test/:testId/me', auth(), ReviewController.getCurrentUserReviewForTest);
+
 // Public routes
 router.get('/test/:testId', ReviewController.getReviewsForTest);
 router.get('/:reviewId', ReviewController.getReview);
 
 // Protected routes (require authentication)
-router.post('/', auth(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN), ReviewController.createReview);
+router.post('/', auth(), ReviewController.createReview);
 
-router.put(
-  '/:reviewId',
-  auth(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN),
-  ReviewController.updateReview,
-);
+router.put('/:reviewId', auth(), ReviewController.updateReview);
 
-router.delete(
-  '/:reviewId',
-  auth(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN),
-  ReviewController.deleteReview,
-);
+router.delete('/:reviewId', auth(), ReviewController.deleteReview);
 
-router.post(
-  '/:reviewId/helpful',
-  auth(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN),
-  ReviewController.markReviewHelpful,
-);
+router.post('/:reviewId/helpful', auth(), ReviewController.markReviewHelpful);
 
 export const ReviewRoutes = router;

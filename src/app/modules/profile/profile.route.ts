@@ -20,11 +20,13 @@ router.patch(
   ProfileController.updateMyProfile,
 );
 
-router.post(
+router.patch(
   '/change-password',
   auth(),
   validateRequest(ProfileValidation.changePassword),
   ProfileController.changePassword,
 );
+
+router.delete('/', auth(), ProfileController.deleteProfile);
 
 export const ProfileRouters = router;

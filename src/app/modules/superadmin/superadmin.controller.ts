@@ -380,8 +380,14 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
   const [orders, activeTests, totalUsers, activeAdmins] = await Promise.all([
     prisma.order.findMany({
       include: {
-        test: { select: { id: true, testName: true } },
         user: { select: { firstName: true, lastName: true, email: true } },
+        orderItems: {
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: {
+            testName: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     }),
@@ -392,7 +398,7 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
 
   const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
   const totalOrders = orders.length;
-  const completedOrders = orders.filter((o) => o.status === 'COMPLETED').length;
+  const completedOrders = orders.filter((o) => o.orderStatus === 'COMPLETED').length;
   const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
   const currentOrders = orders.filter((o) => o.createdAt >= currentWindowStart);
@@ -430,7 +436,7 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
 
   const statusBuckets = new Map<string, number>();
   orders.forEach((order) => {
-    const name = order.status;
+    const name = order.orderStatus;
     statusBuckets.set(name, (statusBuckets.get(name) || 0) + 1);
   });
 
@@ -441,7 +447,7 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
 
   const testRevenue = new Map<string, number>();
   orders.forEach((order) => {
-    const testName = order.test?.testName || 'Unknown Test';
+    const testName = order.orderItems[0]?.testName || 'Unknown Test';
     testRevenue.set(testName, (testRevenue.get(testName) || 0) + Number(order.total || 0));
   });
 
@@ -459,7 +465,7 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
       order.user?.email ||
       'N/A',
     totalAmount: Number(order.total || 0),
-    status: String(order.status || 'PENDING_PAYMENT').toLowerCase(),
+    status: String(order.orderStatus || 'PENDING').toLowerCase(),
     orderDate: order.createdAt,
   }));
 

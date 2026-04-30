@@ -88,7 +88,9 @@ export const NotificationController = {
    */
   getNotifications: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
-    const query: GetNotificationsQuery = req.query as any;
+    const query: GetNotificationsQuery =
+      (res.locals.validatedQuery as GetNotificationsQuery | undefined) ||
+      (req.query as any);
 
     const { page = 1, limit = 20, type, isRead } = query;
 
@@ -111,7 +113,9 @@ export const NotificationController = {
    */
   markAsRead: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
-    const params: MarkAsReadParams = req.params as any;
+    const params: MarkAsReadParams =
+      (res.locals.validatedParams as MarkAsReadParams | undefined) ||
+      (req.params as any);
     const { id } = params;
 
     const notification = await NotificationService.markAsRead(userId, id);

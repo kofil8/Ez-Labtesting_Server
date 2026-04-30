@@ -4,10 +4,20 @@ type EmailLayoutParams = {
   title: string;
   description: string;
   bodyHtml: string;
+  ctaText?: string;
+  ctaUrl?: string;
 };
 
 const supportEmail = 'support@ezlabtesting.com';
 const websiteUrl = 'https://ezlabtesting.com';
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 export const buildEmailLayout = ({
   previewText,
@@ -15,23 +25,84 @@ export const buildEmailLayout = ({
   title,
   description,
   bodyHtml,
+  ctaText,
+  ctaUrl,
 }: EmailLayoutParams) => {
   const year = new Date().getFullYear();
   const logoUrl = process.env.OTP_IMAGE_URL?.trim();
 
+  const safePreviewText = escapeHtml(previewText);
+  const safeHeroTitle = escapeHtml(heroTitle);
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
+  const safeCtaText = ctaText ? escapeHtml(ctaText) : '';
+
   const brandMedia = logoUrl
-    ? `<img src="${logoUrl}" alt="Ez Lab Testing Logo" width="56" height="56" style="display:block;border:0;outline:none;text-decoration:none;border-radius:12px;background:#e8f4ff;padding:6px;" />`
-    : `<div style="width:56px;height:56px;line-height:56px;text-align:center;border-radius:12px;background:#e8f4ff;color:#0f6f9f;font-size:22px;font-weight:800;font-family:Arial,sans-serif;">EZ</div>`;
+    ? `
+      <img
+        src="${logoUrl}"
+        alt="EzLabTesting"
+        width="44"
+        height="44"
+        style="display:block;border:0;outline:none;text-decoration:none;border-radius:10px;"
+      />
+    `
+    : `
+      <div
+        style="
+          width:44px;
+          height:44px;
+          line-height:44px;
+          text-align:center;
+          border-radius:10px;
+          background:#e6f4ff;
+          color:#0b6fa4;
+          font-size:18px;
+          font-weight:700;
+          font-family:Arial,sans-serif;
+        "
+      >
+        EZ
+      </div>
+    `;
+
+  const ctaButton =
+    ctaText && ctaUrl
+      ? `
+        <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" style="margin:24px auto 0;">
+          <tr>
+            <td align="center" bgcolor="#0b6fa4" style="border-radius:8px;">
+              <a
+                href="${ctaUrl}"
+                style="
+                  display:inline-block;
+                  padding:12px 22px;
+                  font-family:Arial,sans-serif;
+                  font-size:14px;
+                  font-weight:600;
+                  line-height:1.2;
+                  color:#ffffff;
+                  text-decoration:none;
+                  border-radius:8px;
+                "
+              >
+                ${safeCtaText}
+              </a>
+            </td>
+          </tr>
+        </table>
+      `
+      : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>Ez Lab Testing Notification</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EzLabTesting</title>
   <style>
-    body, table, td, p, a {
+    body, table, td, a, p {
       -webkit-text-size-adjust: 100%;
       -ms-text-size-adjust: 100%;
     }
@@ -44,121 +115,143 @@ export const buildEmailLayout = ({
 
     img {
       -ms-interpolation-mode: bicubic;
+      border: 0;
+      outline: none;
+      text-decoration: none;
     }
 
     body {
       margin: 0;
       padding: 0;
-      width: 100%;
-      background-color: #eef5fb;
-      font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
-      color: #1b2e3d;
+      width: 100% !important;
+      height: 100% !important;
+      background-color: #f4f8fb;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #1f2d3d;
     }
 
     .wrapper {
       width: 100%;
-      background-color: #eef5fb;
-      background-image: linear-gradient(180deg, #e9f3fb 0%, #eef5fb 42%, #f7fbff 100%);
-      padding: 26px 12px;
+      background-color: #f4f8fb;
+      padding: 24px 12px;
     }
 
     .container {
       width: 100%;
-      max-width: 620px;
+      max-width: 600px;
       margin: 0 auto;
       background-color: #ffffff;
-      border: 1px solid #d8e8f5;
-      border-radius: 20px;
+      border: 1px solid #e3edf5;
+      border-radius: 14px;
       overflow: hidden;
-      box-shadow: 0 14px 38px rgba(13, 59, 90, 0.1);
     }
 
     .header {
-      background: #0f6f9f;
-      background-image: linear-gradient(135deg, #0a5c87 0%, #0f6f9f 45%, #1383ba 100%);
-      padding: 26px 24px 24px;
-      color: #ffffff;
+      padding: 22px 24px;
+      border-bottom: 1px solid #eef3f7;
+      background-color: #ffffff;
     }
 
-    .brand-title {
+    .brand-name {
       margin: 0;
-      font-size: 23px;
+      font-size: 16px;
       line-height: 1.2;
       font-weight: 700;
-      color: #ffffff;
+      color: #12344d;
     }
 
     .brand-subtitle {
       margin: 4px 0 0 0;
-      font-size: 12px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: #d7f4ff;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #7c97ab;
+      letter-spacing: 0.2px;
+    }
+
+    .hero {
+      padding: 28px 24px 10px;
+      background-color: #ffffff;
     }
 
     .hero-title {
-      margin: 16px 0 0 0;
-      font-size: 30px;
-      line-height: 1.25;
-      font-weight: 800;
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.3;
+      font-weight: 700;
+      color: #0f2f46;
       letter-spacing: -0.2px;
-      color: #ffffff;
     }
 
     .hero-subtitle {
-      margin: 10px 0 0;
+      margin: 8px 0 0 0;
       font-size: 13px;
       line-height: 1.6;
-      color: #d9effb;
+      color: #6f8799;
     }
 
     .content {
-      padding: 30px 26px 18px;
-      background: #ffffff;
+      padding: 20px 24px 28px;
+      background-color: #ffffff;
     }
 
     .title {
       margin: 0;
-      font-size: 26px;
-      line-height: 1.25;
+      font-size: 21px;
+      line-height: 1.3;
+      font-weight: 700;
+      color: #12344d;
       text-align: center;
-      color: #0f3047;
-      font-weight: 800;
-      letter-spacing: -0.3px;
+      letter-spacing: -0.2px;
     }
 
     .description {
-      margin: 12px 0 0;
-      font-size: 15px;
-      line-height: 1.75;
+      margin: 10px 0 0 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #5f7486;
       text-align: center;
-      color: #4a6478;
     }
 
-    .content-divider {
-      margin: 18px 0 0;
+    .divider {
       border: 0;
-      border-top: 1px solid #ebf2f8;
+      border-top: 1px solid #eef3f7;
+      margin: 20px 0;
+    }
+
+    .body-content {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #324a5e;
+    }
+
+    .body-content p {
+      margin: 0 0 14px;
+    }
+
+    .body-content a {
+      color: #0b6fa4;
+      text-decoration: none;
+      font-weight: 600;
     }
 
     .footer {
-      background-color: #f5faff;
-      border-top: 1px solid #dbeaf6;
-      padding: 22px 20px;
+      padding: 18px 20px 22px;
       text-align: center;
+      background-color: #f7fbff;
+      border-top: 1px solid #e3edf5;
     }
 
     .footer-text {
-      margin: 0;
-      font-size: 13px;
-      line-height: 1.7;
-      color: #5a7286;
+      margin: 4px 0;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #6b879a;
     }
 
     .footer-link {
-      color: #0f6f9f;
+      color: #0b6fa4;
       text-decoration: none;
-      font-weight: 700;
+      font-weight: 600;
     }
 
     @media only screen and (max-width: 600px) {
@@ -166,60 +259,101 @@ export const buildEmailLayout = ({
         padding: 12px 8px;
       }
 
+      .header,
+      .hero,
+      .content {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+      }
+
       .header {
-        padding: 20px 14px;
+        padding-top: 18px !important;
+        padding-bottom: 18px !important;
+      }
+
+      .hero {
+        padding-top: 22px !important;
       }
 
       .content {
-        padding: 24px 14px 12px;
-      }
-
-      .title {
-        font-size: 22px;
+        padding-bottom: 22px !important;
       }
 
       .hero-title {
-        font-size: 24px;
+        font-size: 21px !important;
+      }
+
+      .title {
+        font-size: 19px !important;
       }
     }
   </style>
 </head>
 <body>
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${previewText}</div>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    ${safePreviewText}
+  </div>
+
   <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" class="wrapper">
     <tr>
       <td align="center">
-        <table role="presentation" width="620" border="0" cellspacing="0" cellpadding="0" class="container" style="width:100%;max-width:620px;">
+        <table
+          role="presentation"
+          width="600"
+          border="0"
+          cellspacing="0"
+          cellpadding="0"
+          class="container"
+          style="width:100%;max-width:600px;"
+        >
           <tr>
             <td class="header">
               <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td width="70" valign="middle">${brandMedia}</td>
-                  <td valign="middle" style="padding-left:12px;">
-                    <p class="brand-title">Ez Lab Testing</p>
-                    <p class="brand-subtitle">Health Testing Platform</p>
+                  <td width="52" valign="middle" style="width:52px;">
+                    ${brandMedia}
+                  </td>
+                  <td valign="middle" style="padding-left:10px;">
+                    <p class="brand-name">EzLabTesting</p>
+                    <p class="brand-subtitle">Medical Lab Testing Marketplace</p>
                   </td>
                 </tr>
               </table>
-              <h2 class="hero-title">${heroTitle}</h2>
-              <p class="hero-subtitle">Trusted diagnostics. Faster decisions. Better care.</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="hero">
+              <h1 class="hero-title">${safeHeroTitle}</h1>
+              <p class="hero-subtitle">Fast. Accurate. Trusted diagnostics.</p>
             </td>
           </tr>
 
           <tr>
             <td class="content">
-              <h3 class="title">${title}</h3>
-              <p class="description">${description}</p>
-              <hr class="content-divider" />
-              ${bodyHtml}
+              <h2 class="title">${safeTitle}</h2>
+              <p class="description">${safeDescription}</p>
+
+              <hr class="divider" />
+
+              <div class="body-content">
+                ${bodyHtml}
+              </div>
+
+              ${ctaButton}
             </td>
           </tr>
 
           <tr>
             <td class="footer">
-              <p class="footer-text">Need help? Contact <a class="footer-link" href="mailto:${supportEmail}">${supportEmail}</a></p>
-              <p class="footer-text" style="margin-top:6px;">Visit our website: <a class="footer-link" href="${websiteUrl}">ezlabtesting.com</a></p>
-              <p class="footer-text" style="margin-top:8px;">&copy; ${year} Ez Lab Testing. All rights reserved.</p>
+              <p class="footer-text">
+                Need help?
+                <a class="footer-link" href="mailto:${supportEmail}">${supportEmail}</a>
+              </p>
+              <p class="footer-text">
+                <a class="footer-link" href="${websiteUrl}">ezlabtesting.com</a>
+              </p>
+              <p class="footer-text">&copy; ${year} EzLabTesting. All rights reserved.</p>
             </td>
           </tr>
         </table>

@@ -2,6 +2,7 @@ import axios from 'axios';
 import httpStatus from 'http-status';
 import { env } from '../../config/env';
 import ApiError from '../errors/ApiErrors';
+import { PROVIDER_LABELS, ProviderCode } from '../modules/lab-centers/providers';
 
 const METERS_PER_MILE = 1609.34;
 const MAX_NEARBY_RADIUS_METERS = 50000; // Google caps at 50km
@@ -72,6 +73,24 @@ interface PlaceDetailsResponse {
   error_message?: string;
 }
 
+interface GeocodeResponse {
+  status: string;
+  results?: Array<{
+    formatted_address?: string;
+    geometry?: {
+      location?: {
+        lat: number;
+        lng: number;
+      };
+    };
+  }>;
+  error_message?: string;
+}
+
+type SearchNearbyLabsOptions = {
+  providerCode?: ProviderCode;
+};
+
 export interface PlaceAutocompleteSuggestion {
   placeId: string;
   mainText: string;
@@ -91,6 +110,12 @@ export interface PlaceDetailsResult {
   longitude?: number;
   rating?: number;
   reviewCount?: number;
+}
+
+export interface GeocodeResult {
+  latitude: number;
+  longitude: number;
+  formattedAddress: string;
 }
 
 export interface LabCenterFromGoogle {
@@ -123,6 +148,7 @@ class GooglePlacesService {
   private baseURL = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
   private autocompleteURL = 'https://maps.googleapis.com/maps/api/place/autocomplete/json';
   private placeDetailsURL = 'https://maps.googleapis.com/maps/api/place/details/json';
+  private geocodeURL = 'https://maps.googleapis.com/maps/api/geocode/json';
 
   constructor() {
     this.apiKey = env.GOOGLE_MAPS_API_KEY;
@@ -193,6 +219,7 @@ class GooglePlacesService {
     lat: number,
     lng: number,
     radiusMiles: number = 25,
+    options: SearchNearbyLabsOptions = {},
   ): Promise<LabCenterFromGoogle[]> {
     if (!this.apiKey) {
       throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Google Maps API key not configured');
@@ -208,11 +235,14 @@ class GooglePlacesService {
     );
 
     try {
+      const providerLabel = options.providerCode ? PROVIDER_LABELS[options.providerCode] : null;
       const params = {
         key: this.apiKey,
         location: `${lat},${lng}`,
         radius: Math.floor(radiusMeters),
-        keyword: 'medical laboratory blood test diagnostics clinic pharmacy',
+        keyword: providerLabel
+          ? `${providerLabel} medical laboratory blood test diagnostics clinic pharmacy`
+          : 'medical laboratory blood test diagnostics clinic pharmacy',
         type: 'health',
       };
 
@@ -354,6 +384,55 @@ class GooglePlacesService {
       }
 
       throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Failed to fetch place details');
+    }
+  }
+
+  async geocodeAddress(address: string): Promise<GeocodeResult> {
+    if (!this.apiKey) {
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Google Maps API key not configured');
+    }
+
+    const query = address.trim();
+    if (!query) {
+      throw new ApiError(httpStatus.BAD_REQUEST, 'address is required');
+    }
+
+    try {
+      const response = await axios.get<GeocodeResponse>(this.geocodeURL, {
+        params: {
+          key: this.apiKey,
+          address: query,
+        },
+      });
+
+      if (response.data.status !== 'OK' || !response.data.results?.length) {
+        if (response.data.status === 'ZERO_RESULTS') {
+          throw new ApiError(httpStatus.BAD_REQUEST, 'We could not find that location');
+        }
+
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          response.data.error_message || `Geocoding failed with status ${response.data.status}`,
+        );
+      }
+
+      const result = response.data.results[0];
+      const location = result.geometry?.location;
+      if (!location) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Geocoding response did not include coordinates');
+      }
+
+      return {
+        latitude: location.lat,
+        longitude: location.lng,
+        formattedAddress: result.formatted_address || query,
+      };
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Failed to geocode location');
     }
   }
 

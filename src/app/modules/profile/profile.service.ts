@@ -3,8 +3,10 @@ import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import config from '../../../config';
 import { prisma } from '../../../config/db';
+import redisClient from '../../../config/redis';
 import ApiError from '../../errors/ApiErrors';
 import { deleteFile } from '../../helpers/fileUploadHelper';
+import { mfaChangePasswordKey } from '../Auth/mfa.controller';
 
 const GENDER_ALIASES: Record<string, Gender> = {
   male: 'MALE',
@@ -15,6 +17,19 @@ const GENDER_ALIASES: Record<string, Gender> = {
 };
 
 const GENDER_ENUM_VALUES = new Set<Gender>(Object.values(GENDER_ALIASES));
+const PROFILE_UPDATE_FIELDS = [
+  'firstName',
+  'lastName',
+  'phoneNumber',
+  'bio',
+  'gender',
+  'dateOfBirth',
+  'addressLine1',
+  'addressLine2',
+  'city',
+  'state',
+  'zipCode',
+] as const;
 
 const normalizeGender = (value: unknown): Gender | undefined => {
   if (typeof value !== 'string') {
@@ -43,21 +58,22 @@ const getProfileFromDB = async (user: any) => {
       id: true,
       firstName: true,
       lastName: true,
+      username: true,
       email: true,
       phoneNumber: true,
       profileImage: true,
       bio: true,
       gender: true,
+      addressLine1: true,
+      addressLine2: true,
+      city: true,
+      state: true,
+      zipCode: true,
       dateOfBirth: true,
-      address: true,
-      bloodType: true,
-      allergies: true,
-      medicalConditions: true,
-      medications: true,
-      emergencyContactName: true,
-      emergencyContactPhone: true,
       role: true,
+      status: true,
       isVerified: true,
+      mfaEnabled: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -76,8 +92,11 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
 
   let profileImage = existingUser.profileImage;
   const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
-  const normalizedPayload =
-    parsedPayload && typeof parsedPayload === 'object' ? { ...parsedPayload } : {};
+  const payloadSource =
+    parsedPayload?.bodyData && typeof parsedPayload.bodyData === 'object'
+      ? parsedPayload.bodyData
+      : parsedPayload;
+  const normalizedPayload = payloadSource && typeof payloadSource === 'object' ? { ...payloadSource } : {};
 
   const shouldRemoveProfileImage =
     normalizedPayload.removeProfileImage === true ||
@@ -121,11 +140,18 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
     normalizedPayload.gender = normalizedGender;
   }
 
+  const updateData = PROFILE_UPDATE_FIELDS.reduce<Record<string, unknown>>((acc, field) => {
+    if (Object.prototype.hasOwnProperty.call(normalizedPayload, field)) {
+      acc[field] = normalizedPayload[field];
+    }
+    return acc;
+  }, {});
+
   const updatedUser = await prisma.user.update({
     where: { id },
     data: {
       profileImage,
-      ...normalizedPayload,
+      ...updateData,
     },
   });
 
@@ -133,13 +159,26 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
   return Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== null));
 };
 
-const changePasswordInDB = async (user: any, payload: any) => {
+const changePasswordInDB = async (
+  user: any,
+  payload: {
+    oldPassword: string;
+    newPassword: string;
+  },
+) => {
   const userData = await prisma.user.findUnique({
     where: { id: user.id },
   });
 
   if (!userData) {
     throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+
+  if (userData.mfaEnabled) {
+    const verifiedAt = await redisClient.get(mfaChangePasswordKey(user.id));
+    if (!verifiedAt) {
+      throw new ApiError(httpStatus.FORBIDDEN, 'MFA verification is required to change password');
+    }
   }
 
   // Check old password is correct
@@ -166,13 +205,25 @@ const changePasswordInDB = async (user: any, payload: any) => {
     },
   });
 
+  if (userData.mfaEnabled) {
+    await redisClient.del(mfaChangePasswordKey(user.id));
+  }
+
   return {
     message: 'Password changed successfully',
   };
+};
+
+const deleteProfileFromDB = async (user: any) => {
+  const existingUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!existingUser) throw new ApiError(httpStatus.BAD_REQUEST, 'User not found');
+
+  await prisma.user.delete({ where: { id: user.id } });
 };
 
 export const ProfileService = {
   getProfileFromDB,
   updateMyProfileIntoDB,
   changePasswordInDB,
+  deleteProfileFromDB,
 };

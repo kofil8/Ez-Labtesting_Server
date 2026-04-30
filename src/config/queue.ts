@@ -20,11 +20,14 @@ export interface NotificationJob {
  */
 export interface FCMJob {
   token: string;
+  notificationId?: string;
+  userId?: string;
+  type?: string;
   notification: {
     title: string;
     body: string;
   };
-  data?: Record<string, any>;
+  data?: Record<string, string>;
 }
 
 /**
@@ -34,6 +37,7 @@ export interface EmailJob {
   to: string;
   subject: string;
   html: string;
+  notificationId?: string;
   data?: Record<string, any>;
 }
 

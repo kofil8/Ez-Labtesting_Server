@@ -1,13 +1,9 @@
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import httpStatus from 'http-status';
-import Stripe from 'stripe';
 import ApiError from '../../../app/errors/ApiErrors';
 import { env } from '../../../config/env';
 import prisma from '../../../shared/prisma';
-
-const stripe = new Stripe(env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2026-02-25.clover',
-});
+import { stripePaymentGateway } from './services/stripe-payment-gateway.service';
 
 /**
  * PaymentService
@@ -32,8 +28,10 @@ export class PaymentService {
       select: {
         id: true,
         userId: true,
-        status: true,
+        orderStatus: true,
+        paymentStatus: true,
         total: true,
+        currency: true,
         stripePaymentIntentId: true,
         createdAt: true,
       },
@@ -42,20 +40,15 @@ export class PaymentService {
     if (!order) throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
     if (order.userId !== userId) throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden');
 
-    // Don't create a new PaymentIntent for already-paid or ACH-processing orders
+    // Don't create a new PaymentIntent for already-settled or closed orders
     if (
-      (
-        [
-          OrderStatus.PAID,
-          OrderStatus.PAYMENT_PROCESSING,
-          OrderStatus.LAB_ORDER_PLACED,
-          OrderStatus.COMPLETED,
-        ] as OrderStatus[]
-      ).includes(order.status)
+      order.paymentStatus === PaymentStatus.SUCCEEDED ||
+      order.orderStatus === OrderStatus.COMPLETED ||
+      order.orderStatus === OrderStatus.CANCELLED
     ) {
       throw new ApiError(
         httpStatus.CONFLICT,
-        `Order payment is already in progress or completed (status: ${order.status})`,
+        `Order payment is already in progress or completed`,
       );
     }
 
@@ -63,7 +56,7 @@ export class PaymentService {
 
     // If we already have a PI, reuse it when possible
     if (order.stripePaymentIntentId) {
-      const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
+      const pi = await stripePaymentGateway.retrievePaymentIntent(order.stripePaymentIntentId);
 
       // Validate the PaymentIntent is actually tied to this order
       if (pi.metadata?.orderId && pi.metadata.orderId !== order.id) {
@@ -87,11 +80,11 @@ export class PaymentService {
 
       // Ensure correct amount/currency + metadata (safe to update in most states)
       const needsUpdate =
-        pi.amount !== amountCents || pi.currency !== env.PAYMENT_CURRENCY.toLowerCase();
+        pi.amount !== amountCents || pi.currency !== (order.currency || env.PAYMENT_CURRENCY).toLowerCase();
       if (needsUpdate) {
-        await stripe.paymentIntents.update(pi.id, {
+        await stripePaymentGateway.updatePaymentIntent(pi.id, {
           amount: amountCents,
-          currency: env.PAYMENT_CURRENCY.toLowerCase(),
+          currency: (order.currency || env.PAYMENT_CURRENCY).toLowerCase(),
           metadata: {
             ...pi.metadata,
             orderId: order.id,
@@ -100,7 +93,7 @@ export class PaymentService {
         });
       }
 
-      const refreshed = await stripe.paymentIntents.retrieve(pi.id);
+      const refreshed = await stripePaymentGateway.retrievePaymentIntent(pi.id);
       return {
         success: true,
         clientSecret: refreshed.client_secret,
@@ -112,10 +105,10 @@ export class PaymentService {
     }
 
     // Create a fresh PaymentIntent (idempotent per orderId)
-    const paymentIntent = await stripe.paymentIntents.create(
+    const paymentIntent = await stripePaymentGateway.createPaymentIntent(
       {
         amount: amountCents,
-        currency: env.PAYMENT_CURRENCY.toLowerCase(),
+        currency: (order.currency || env.PAYMENT_CURRENCY).toLowerCase(),
         automatic_payment_methods: {
           enabled: true,
           allow_redirects: 'always',
@@ -156,18 +149,19 @@ export class PaymentService {
    * Retrieve payment intent details (server-side)
    */
   async getPaymentIntent(paymentIntentId: string) {
-    return await stripe.paymentIntents.retrieve(paymentIntentId);
+    return await stripePaymentGateway.retrievePaymentIntent(paymentIntentId);
   }
 
   /**
    * Confirm payment intent status (server-side)
    */
   async confirmPaymentIntent(paymentIntentId: string) {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentIntent = await stripePaymentGateway.retrievePaymentIntent(paymentIntentId);
 
     return {
       success: true,
       status: paymentIntent.status,
+      internalStatus: stripePaymentGateway.mapIntentStatus(paymentIntent.status),
       paymentIntentId: paymentIntent.id,
       amount: paymentIntent.amount / 100,
       currency: paymentIntent.currency,
@@ -176,7 +170,7 @@ export class PaymentService {
     };
   }
 
-  private toCents(amountDollars: number) {
+  private toCents(amountDollars: Prisma.Decimal | number) {
     // Keep deterministic rounding
     return Math.round(Number(amountDollars) * 100);
   }

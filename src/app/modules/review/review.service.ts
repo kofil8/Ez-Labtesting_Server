@@ -1,10 +1,62 @@
-import { Prisma } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import httpStatus from 'http-status';
 import { prisma } from '../../../config/db';
 import ApiError from '../../errors/ApiErrors';
 import { CreateReviewInput, UpdateReviewInput } from './review.validation';
 
+type ReviewWithUser = Prisma.TestReviewGetPayload<{
+  include: {
+    user: {
+      select: {
+        id: true;
+        firstName: true;
+        profileImage: true;
+      };
+    };
+  };
+}>;
+
 export class ReviewService {
+  private static toReviewDto(review: ReviewWithUser) {
+    return {
+      id: review.id,
+      testId: review.testId,
+      userId: review.userId,
+      rating: review.rating,
+      title: review.title,
+      comment: review.comment,
+      isVerifiedPurchase: review.isVerifiedPurchase,
+      helpfulCount: review.helpfulCount,
+      createdAt: review.createdAt,
+      updatedAt: review.updatedAt,
+      user: {
+        id: review.user?.id,
+        name: review.user?.firstName || 'Anonymous',
+        profileImage: review.user?.profileImage,
+      },
+    };
+  }
+
+  private static async hasVerifiedPurchase(userId: string, testId: string) {
+    const orderItem = await prisma.orderItem.findFirst({
+      where: {
+        testId,
+        order: {
+          userId,
+          paymentStatus: PaymentStatus.SUCCEEDED,
+          orderStatus: {
+            not: OrderStatus.CANCELLED,
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return Boolean(orderItem);
+  }
+
   // Get all reviews for a test with pagination and sorting
   static async getReviewsForTest(
     testId: string,
@@ -82,13 +134,7 @@ export class ReviewService {
     });
 
     return {
-      reviews: reviews.map((review) => ({
-        ...review,
-        user: {
-          name: review.user?.firstName || 'Anonymous',
-          profileImage: review.user?.profileImage,
-        },
-      })),
+      reviews: reviews.map((review) => ReviewService.toReviewDto(review)),
       meta: {
         page,
         limit,
@@ -99,6 +145,26 @@ export class ReviewService {
         distribution: ratingDistribution,
       },
     };
+  }
+
+  static async getCurrentUserReviewForTest(testId: string, userId: string) {
+    const review = await prisma.testReview.findFirst({
+      where: {
+        testId,
+        userId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+
+    return review ? ReviewService.toReviewDto(review) : null;
   }
 
   // Get a single review
@@ -120,13 +186,7 @@ export class ReviewService {
       throw new ApiError(httpStatus.NOT_FOUND, 'Review not found');
     }
 
-    return {
-      ...review,
-      user: {
-        name: review.user?.firstName || 'Anonymous',
-        profileImage: review.user?.profileImage,
-      },
-    };
+    return ReviewService.toReviewDto(review);
   }
 
   // Create a review
@@ -155,6 +215,8 @@ export class ReviewService {
       throw new ApiError(httpStatus.NOT_FOUND, 'Test not found');
     }
 
+    const isVerifiedPurchase = await ReviewService.hasVerifiedPurchase(userId, data.testId);
+
     const review = await prisma.testReview.create({
       data: {
         testId: data.testId,
@@ -162,7 +224,7 @@ export class ReviewService {
         rating: data.rating,
         title: data.title,
         comment: data.comment,
-        isVerifiedPurchase: true, // TODO: Check against actual purchase history
+        isVerifiedPurchase,
       },
       include: {
         user: {
@@ -175,13 +237,7 @@ export class ReviewService {
       },
     });
 
-    return {
-      ...review,
-      user: {
-        name: review.user?.firstName || 'Anonymous',
-        profileImage: review.user?.profileImage,
-      },
-    };
+    return ReviewService.toReviewDto(review);
   }
 
   // Update a review
@@ -218,13 +274,7 @@ export class ReviewService {
       },
     });
 
-    return {
-      ...updatedReview,
-      user: {
-        name: updatedReview.user?.firstName || 'Anonymous',
-        profileImage: updatedReview.user?.profileImage,
-      },
-    };
+    return ReviewService.toReviewDto(updatedReview);
   }
 
   // Delete a review
@@ -258,6 +308,10 @@ export class ReviewService {
 
     if (!review) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Review not found');
+    }
+
+    if (review.userId === userId) {
+      throw new ApiError(httpStatus.FORBIDDEN, 'You cannot mark your own review as helpful');
     }
 
     // Check if user already marked this review as helpful
@@ -302,13 +356,7 @@ export class ReviewService {
 
       return {
         helpful: false,
-        review: {
-          ...updatedReview,
-          user: {
-            name: updatedReview.user?.firstName || 'Anonymous',
-            profileImage: updatedReview.user?.profileImage,
-          },
-        },
+        review: ReviewService.toReviewDto(updatedReview),
       };
     } else {
       // Add helpful mark
@@ -340,13 +388,7 @@ export class ReviewService {
 
       return {
         helpful: true,
-        review: {
-          ...updatedReview,
-          user: {
-            name: updatedReview.user?.firstName || 'Anonymous',
-            profileImage: updatedReview.user?.profileImage,
-          },
-        },
+        review: ReviewService.toReviewDto(updatedReview),
       };
     }
   }

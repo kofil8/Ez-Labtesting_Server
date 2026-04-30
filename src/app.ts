@@ -5,27 +5,25 @@ import express, { Application, ErrorRequestHandler, Request, Response } from 'ex
 import helmet from 'helmet';
 import httpStatus from 'http-status';
 import morgan from 'morgan';
+import path from 'path';
 import GlobalErrorHandler from './app/middlewares/globalErrorHandler';
-import { defaultLimiter } from './app/middlewares/rateLimit';
+import { defaultLimiter } from './app/middlewares/redisLimit';
 import router from './app/routes';
 import logger from './app/utils/logger';
+import {
+  buildCorsOptions,
+  enforceTrustedOrigin,
+  getAllowedOrigins,
+  getTrustProxySetting,
+} from './config/security';
 
 const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
+const allowedOrigins = getAllowedOrigins();
+
+app.set('trust proxy', getTrustProxySetting());
 
 // 🧩 Global middlewares
-const defaultOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-
-const corsOptions = {
-  // Allow the Next.js dev server and any comma-separated origins in ALLOWED_ORIGINS
-  origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-    : defaultOrigins,
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-};
-
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -34,7 +32,8 @@ app.use(
 );
 
 // 🔧 Middleware setup
-app.use(cors(corsOptions));
+app.use(cors(buildCorsOptions(allowedOrigins)));
+app.use(enforceTrustedOrigin(allowedOrigins));
 app.use(defaultLimiter);
 
 // ⚠️ CRITICAL: Webhook route MUST receive raw body for signature verification
@@ -46,6 +45,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(morganFormat));
 app.use(compression());
 app.use(cookieParser());
+
+app.use('/assets', express.static(path.join(__dirname, '../assets')));
 
 // 📋 Logging
 app.use(morgan('dev'));

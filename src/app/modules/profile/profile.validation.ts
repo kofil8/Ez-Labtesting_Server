@@ -7,15 +7,12 @@ const updateProfileBodyData = z.object({
   phoneNumber: z.string().optional(),
   bio: z.string().optional(),
   gender: z.nativeEnum(Gender).optional(),
-  dateOfBirth: z.string().optional(), // Expecting ISO string or date string
-  address: z.string().optional(),
-  bloodType: z.string().optional(),
-  allergies: z.string().optional(),
-  medicalConditions: z.string().optional(),
-  medications: z.string().optional(),
-  emergencyContactName: z.string().optional(),
-  emergencyContactPhone: z.string().optional(),
-  removeProfileImage: z.boolean().optional(),
+  dateOfBirth: z.string().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
 });
 
 const updateProfile = z.object({
@@ -27,7 +24,13 @@ const updateProfile = z.object({
 const changePassword = z.object({
   body: z.object({
     oldPassword: z.string().min(1, 'Old password is required'),
-    newPassword: z.string().min(6, 'Password must be at least 6 characters long'),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters long')
+      .regex(
+        /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])/,
+        'Password must contain at least one uppercase letter, one number and one special character',
+      ),
   }),
 });
 

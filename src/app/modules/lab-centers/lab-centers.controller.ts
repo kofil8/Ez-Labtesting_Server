@@ -4,10 +4,11 @@ import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
 import { LabCenterServices } from './lab-centers.service';
 
-const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
+const asParamString = (value: unknown) =>
+  Array.isArray(value) ? value[0] : value;
 
-const getLabCenters = catchAsync(async (req, res) => {
-  const labCenters = await LabCenterServices.getLabCentersDB(req.query);
+const getLabCenters = catchAsync(async (req: Request, res: Response) => {
+  const labCenters = await LabCenterServices.getLabCenters(req.query);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -16,10 +17,19 @@ const getLabCenters = catchAsync(async (req, res) => {
   });
 });
 
-const getLabCenterById = catchAsync(async (req, res) => {
-  const id = asParamString(req.params.id);
+const getNationwideLabCenters = catchAsync(async (req: Request, res: Response) => {
+  const result = await LabCenterServices.getNationwideLabCenters(req.query);
 
-  const labCenter = await LabCenterServices.getLabCenterByIdDB(id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    message: 'Nationwide lab availability retrieved successfully',
+    data: result,
+  });
+});
+
+const getLabCenterById = catchAsync(async (req: Request, res: Response) => {
+  const labCenterId = asParamString(req.params.labCenterId);
+  const labCenter = await LabCenterServices.getLabCenterById(labCenterId as string);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -28,46 +38,8 @@ const getLabCenterById = catchAsync(async (req, res) => {
   });
 });
 
-const createLabCenter = catchAsync(async (req: Request, res: Response) => {
-  const payload = req.body;
-  const labCenter = await LabCenterServices.createLabCenterInDB(payload);
-
-  sendResponse(res, {
-    statusCode: httpStatus.CREATED,
-    message: 'Lab center created successfully',
-    data: labCenter,
-  });
-});
-
-const updateLabCenter = catchAsync(async (req: Request, res: Response) => {
-  const id = asParamString(req.params.id);
-  const payload = req.body;
-
-  const labCenter = await LabCenterServices.updateLabCenterInDB(id, payload);
-
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    message: 'Lab center updated successfully',
-    data: labCenter,
-  });
-});
-
-const deleteLabCenter = catchAsync(async (req, res) => {
-  const id = asParamString(req.params.id);
-
-  await LabCenterServices.deleteLabCenterFromDB(id);
-
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    message: 'Lab center deleted successfully',
-    data: null,
-  });
-});
-
 const geocode = catchAsync(async (req: Request, res: Response) => {
-  const { address } = req.body;
-
-  const result = await LabCenterServices.geocodeAddress(address);
+  const result = await LabCenterServices.geocodeAddress(req.body.address);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -77,8 +49,8 @@ const geocode = catchAsync(async (req: Request, res: Response) => {
 });
 
 const autocomplete = catchAsync(async (req: Request, res: Response) => {
-  const input = asParamString(req.query.input || '');
-  const suggestions = await LabCenterServices.autocompleteLocations(input);
+  const input = asParamString(req.query.input);
+  const suggestions = await LabCenterServices.autocompleteLocations(input as string);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -89,7 +61,7 @@ const autocomplete = catchAsync(async (req: Request, res: Response) => {
 
 const getPlaceDetails = catchAsync(async (req: Request, res: Response) => {
   const placeId = asParamString(req.params.placeId);
-  const details = await LabCenterServices.getGooglePlaceDetails(placeId);
+  const details = await LabCenterServices.getPlaceDetails(placeId as string);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -99,12 +71,10 @@ const getPlaceDetails = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const LabCenterController = {
-  getLabCenters,
-  getLabCenterById,
-  createLabCenter,
-  updateLabCenter,
-  deleteLabCenter,
-  geocode,
   autocomplete,
+  geocode,
+  getLabCenterById,
+  getLabCenters,
+  getNationwideLabCenters,
   getPlaceDetails,
 };

@@ -3,6 +3,7 @@ import auth from '../../middlewares/auth';
 import { supportController } from './support.controller';
 import {
   validateAddMessage,
+  validateCreateManualReviewTicket,
   validateCreateTicket,
   validateGetTicketsQuery,
   validateTicketParams,
@@ -12,6 +13,12 @@ import {
 const router = express.Router();
 
 router.post('/tickets', auth(), validateCreateTicket, supportController.createTicket);
+router.post(
+  '/tickets/manual-review',
+  auth(),
+  validateCreateManualReviewTicket,
+  supportController.createManualReviewTicket,
+);
 
 router.get('/tickets', auth(), validateGetTicketsQuery, supportController.listTickets);
 

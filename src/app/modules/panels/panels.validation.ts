@@ -45,7 +45,7 @@ const getPanelsQuery = z.object({
     limit: numberFromString,
     sortBy: z.string().optional(),
     sortOrder: z.enum(['asc', 'desc']).optional(),
-    searchTerm: z.string().optional(),
+    search: z.string().optional(),
     isActive: z.enum(['true', 'false']).optional(),
     minPrice: numberFromString,
     maxPrice: numberFromString,

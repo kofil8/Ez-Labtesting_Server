@@ -8,56 +8,64 @@ datasource db {
 }
 
 model User {
-  id             String     @id @default(uuid())
-  email          String     @unique
-  password       String
-  phoneNumber    String     @db.VarChar(20)
-  profileImage   String?
-  bio            String?    @db.VarChar(500)
-  firstName      String     @db.VarChar(100)
-  lastName       String     @db.VarChar(100)
-  dateOfBirth    DateTime?
-  addressLine1   String?    @db.VarChar(255)
-  addressLine2   String?    @db.VarChar(255)
-  city           String?    @db.VarChar(100)
-  state          String?    @db.Char(2)
-  zipCode        String?    @db.VarChar(10)
-  isVerified     Boolean    @default(false)
-  role           Role       @default(CUSTOMER)
-  laboratoryId   BigInt?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  lastAction     DateTime?
-  lastLogin      DateTime?
-  status         UserStatus @default(ACTIVE)
-  mfaBackupCodes String[]   @default([])
-  mfaEnabled     Boolean    @default(false)
-  mfaSecret      String?
-  mfaSetupAt     DateTime?
-  gender         Gender?
+  id                    String     @id @default(uuid()) @db.Uuid
+  email                 String     @unique
+  password              String
+  phoneNumber           String     @unique
+  username              String?    @unique @db.VarChar(50)
+  profileImage          String?
+  bio                   String?    @db.VarChar(500)
+  firstName             String     @db.VarChar(100)
+  lastName              String     @db.VarChar(100)
+  dateOfBirth           DateTime?
+  gender                Gender?
+  addressLine1          String?    @db.VarChar(255)
+  addressLine2          String?    @db.VarChar(255)
+  city                  String?    @db.VarChar(100)
+  state                 String?    @db.Char(2)
+  zipCode               String?    @db.VarChar(10)
+  isVerified            Boolean    @default(false)
+  emailVerifiedAt       DateTime?
+  phoneVerifiedAt       DateTime?
+  marketingOptIn        Boolean    @default(false)
+  role                  Role       @default(CUSTOMER)
+  laboratoryId          String?    @db.Uuid
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  deletedAt             DateTime?
+  lastAction            DateTime?
+  lastLogin             DateTime?
+  lastPasswordChangedAt DateTime?
+  status                UserStatus @default(ACTIVE)
+  mfaBackupCodes        String[]   @default([])
+  mfaEnabled            Boolean    @default(false)
+  mfaSecret             String?
+  mfaSetupAt            DateTime?
 
-  laboratory          Laboratory?      @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+  laboratory          Laboratory?      @relation(fields: [laboratoryId], references: [id])
+  cartItems           CartItem[]
   notifications       Notification[]
   orders              Order[]
   pushTokens          PushToken[]
   reviewHelpfulMarks  ReviewHelpful[]
-  reviews             TestReview[]
   sentSupportMessages SupportMessage[] @relation("SupportMessageSender")
   supportTickets      SupportTicket[]
-  cartItems           CartItem[]
+  reviews             TestReview[]
 
-  @@index([email])
   @@index([role])
   @@index([laboratoryId])
+  @@index([status])
 }
 
 model TestCategory {
-  id          BigInt  @id
-  name        String  @db.VarChar(100)
-  slug        String  @unique @db.VarChar(120)
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  slug        String   @unique @db.VarChar(120)
   description String?
-  sortOrder   Int     @default(0)
-  isActive    Boolean @default(true)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tests Test[]
 
@@ -66,199 +74,281 @@ model TestCategory {
 }
 
 model Test {
-  id               BigInt   @id
-  name             String   @db.VarChar(255)
-  slug             String   @unique @db.VarChar(280)
-  description      String?
-  shortDescription String?  @db.VarChar(500)
-  categoryId       BigInt
-  specimenType     String?  @db.VarChar(100)
-  turnaroundDays   Int?     @db.SmallInt
-  isPanel          Boolean  @default(false)
-  cptCode          String?  @db.VarChar(20)
-  isActive         Boolean  @default(true)
-  isPopular        Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                      String   @id @default(uuid()) @db.Uuid
+  testCode                String?  @db.VarChar(50)
+  name                    String   @db.VarChar(255)
+  slug                    String   @unique @db.VarChar(280)
+  description             String?
+  testImageUrl            String?  @db.VarChar(500)
+  shortDescription        String?  @db.VarChar(500)
+  setUpSchedule           String[] @default([]) @db.VarChar(500)
+  categoryId              String   @db.Uuid
+  specimenType            String?  @db.VarChar(100)
+  baseTurnaroundDays      Int?     @db.SmallInt
+  isPanel                 Boolean  @default(false)
+  cptCode                 String[] @default([]) @db.VarChar(20)
+  preparationInstructions String?
+  internalNotes           String?
+  seoTitle                String?  @db.VarChar(255)
+  seoDescription          String?  @db.VarChar(500)
+  searchKeywords          String[] @default([])
+  requiresFasting         Boolean  @default(false)
+  minAge                  Int?     @default(0) @db.SmallInt
+  maxAge                  Int?     @default(120) @db.SmallInt
+  isActive                Boolean  @default(true)
+  isPopular               Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  category          TestCategory       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  reviews           TestReview[]
-  labTests          LabTest[]
-  stateRestrictions StateRestriction[]
+  category          TestCategory       @relation(fields: [categoryId], references: [id])
   cartItems         CartItem[]
+  labTests          LabTest[]
   orderItems        OrderItem[]
+  stateRestrictions StateRestriction[]
+  componentOfPanels TestComponent[]    @relation("ComponentOfPanels")
+  panelComponents   TestComponent[]    @relation("PanelComponents")
+  reviews           TestReview[]
 
-  panelComponents   TestComponent[] @relation("PanelComponents")
-  componentOfPanels TestComponent[] @relation("ComponentOfPanels")
-
+  @@unique([name, categoryId])
   @@index([categoryId])
   @@index([isActive])
   @@index([isPopular])
+  @@index([testCode])
   @@index([cptCode])
   @@index([categoryId, isActive])
-  @@index([slug])
 }
 
 model TestComponent {
-  id              BigInt @id @default(autoincrement())
-  panelId         BigInt
-  componentTestId BigInt
+  id              String   @id @default(uuid()) @db.Uuid
+  panelId         String   @db.Uuid
+  componentTestId String   @db.Uuid
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
 
   panel         Test @relation("PanelComponents", fields: [panelId], references: [id], onDelete: Cascade)
   componentTest Test @relation("ComponentOfPanels", fields: [componentTestId], references: [id], onDelete: Cascade)
 
   @@unique([panelId, componentTestId])
   @@index([componentTestId])
+  @@index([panelId, sortOrder])
 }
 
 model Laboratory {
-  id              BigInt   @id
-  name            String   @db.VarChar(255)
-  code            String   @unique @db.VarChar(20)
-  apiEndpoint     String?  @db.VarChar(500)
-  apiKeyEncrypted String?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
+  id                         String   @id @default(uuid()) @db.Uuid
+  name                       String   @db.VarChar(255)
+  displayName                String?  @db.VarChar(255)
+  code                       String   @unique @db.VarChar(20)
+  apiEndpoint                String?  @db.VarChar(500)
+  apiKeyEncrypted            String?
+  integrationType            String?  @db.VarChar(50)
+  supportsRealtimeSubmission Boolean  @default(false)
+  supportsResultsRetrieval   Boolean  @default(false)
+  isActive                   Boolean  @default(true)
+  isVisibleToCustomers       Boolean  @default(true)
+  sortOrder                  Int      @default(0)
+  notes                      String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
-  users        User[]
-  labTests     LabTest[]
-  drawCenters  DrawCenter[]
-  cartItems    CartItem[]
-  orders       Order[]
-  requisitions Requisition[]
+  cartItems         CartItem[]
+  drawCenters       DrawCenter[]
+  labTests          LabTest[]
+  orders            Order[]
+  requisitions      Requisition[]
+  users             User[]
+  stateRestrictions StateRestriction[]
 
   @@index([isActive])
+  @@index([isVisibleToCustomers])
+  @@index([sortOrder])
 }
 
 model LabTest {
-  id                     BigInt  @id @default(autoincrement())
-  testId                 BigInt
-  laboratoryId           BigInt
-  labTestCode            String  @db.VarChar(50)
-  labCost                Decimal @default(0.00) @db.Decimal(10, 2)
-  retailPrice            Decimal @default(0.00) @db.Decimal(10, 2)
-  isAvailable            Boolean @default(true)
-  turnaroundDaysOverride Int?    @db.SmallInt
+  id                          String   @id @default(uuid()) @db.Uuid
+  testId                      String   @db.Uuid
+  laboratoryId                String   @db.Uuid
+  labTestCode                 String   @db.VarChar(50)
+  externalTestId              String?  @db.VarChar(100)
+  labCost                     Decimal  @default(0.00) @db.Decimal(10, 2)
+  retailPrice                 Decimal  @default(0.00) @db.Decimal(10, 2)
+  salePrice                   Decimal? @db.Decimal(10, 2)
+  currency                    String   @default("USD") @db.Char(3)
+  isAvailable                 Boolean  @default(true)
+  isVisible                   Boolean  @default(true)
+  turnaroundDaysOverride      Int?     @db.SmallInt
+  specimenTypeOverride        String?  @db.VarChar(100)
+  patientInstructionsOverride String?
+  sortOrder                   Int      @default(0)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 
-  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
-  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id])
+  test       Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
 
   @@unique([testId, laboratoryId])
+  @@unique([laboratoryId, labTestCode])
   @@index([laboratoryId])
   @@index([isAvailable])
+  @@index([isVisible])
   @@index([labTestCode])
+  @@index([testId, laboratoryId, isAvailable])
 }
 
 model StateRestriction {
-  id              BigInt          @id @default(autoincrement())
+  id              String          @id @default(uuid()) @db.Uuid
   stateCode       String          @db.Char(2)
-  testId          BigInt?
+  testId          String?         @db.Uuid
+  laboratoryId    String?         @db.Uuid
   restrictionType RestrictionType
   notes           String?
   isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  test Test? @relation(fields: [testId], references: [id], onDelete: Cascade)
+  test       Test?       @relation(fields: [testId], references: [id], onDelete: Cascade)
+  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id])
 
   @@index([stateCode])
   @@index([testId])
+  @@index([laboratoryId])
   @@index([stateCode, isActive])
 }
 
 model DrawCenter {
-  id           BigInt   @id @default(autoincrement())
-  name         String   @db.VarChar(255)
-  laboratoryId BigInt?
-  addressLine1 String   @db.VarChar(255)
-  addressLine2 String?  @db.VarChar(255)
-  city         String   @db.VarChar(100)
-  state        String   @db.Char(2)
-  zipCode      String   @db.VarChar(10)
-  latitude     Decimal? @db.Decimal(10, 7)
-  longitude    Decimal? @db.Decimal(10, 7)
-  phone        String?  @db.VarChar(20)
-  hours        String?
-  isActive     Boolean  @default(true)
+  id                   String    @id @default(uuid()) @db.Uuid
+  laboratoryId         String    @db.Uuid
+  externalCenterId     String?   @db.VarChar(100)
+  name                 String    @db.VarChar(255)
+  addressLine1         String    @db.VarChar(255)
+  addressLine2         String?   @db.VarChar(255)
+  city                 String    @db.VarChar(100)
+  state                String    @db.Char(2)
+  zipCode              String    @db.VarChar(10)
+  latitude             Decimal?  @db.Decimal(10, 7)
+  longitude            Decimal?  @db.Decimal(10, 7)
+  phone                String?   @db.VarChar(20)
+  hours                String?
+  timezone             String?   @db.VarChar(50)
+  acceptsWalkIns       Boolean   @default(true)
+  appointmentRequired  Boolean   @default(false)
+  isActive             Boolean   @default(true)
+  isVisible            Boolean   @default(true)
+  normalizedSearchText String?   @db.VarChar(1000)
+  metadata             Json?
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id])
+  cartItems  CartItem[]
   orders     Order[]
 
   @@index([laboratoryId])
+  @@index([state, city])
   @@index([state])
   @@index([zipCode])
   @@index([isActive])
+  @@index([isVisible])
+  @@index([deletedAt])
   @@index([latitude, longitude])
 }
 
 model CartItem {
-  id           BigInt   @id @default(autoincrement())
-  userId       String
-  testId       BigInt
-  laboratoryId BigInt
-  price        Decimal  @default(0.00) @db.Decimal(10, 2)
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  testId             String   @db.Uuid
+  laboratoryId       String   @db.Uuid
+  labTestId          String   @db.Uuid
+  drawCenterId       String?  @db.Uuid
+  quantity           Int      @default(1)
+  currency           String   @default("USD") @db.Char(3)
+  baseRetailPrice    Decimal  @default(0.00) @db.Decimal(10, 2)
+  effectiveUnitPrice Decimal  @default(0.00) @db.Decimal(10, 2)
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
-  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  drawCenter DrawCenter? @relation(fields: [drawCenterId], references: [id])
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id])
+  labTest    LabTest     @relation(fields: [labTestId], references: [id])
+  test       Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, testId, laboratoryId])
+  @@unique([userId, labTestId])
   @@index([userId])
   @@index([testId])
   @@index([laboratoryId])
+  @@index([labTestId])
+  @@index([drawCenterId])
 }
 
 model Order {
-  id           String  @id @default(uuid())
-  userId       String?
-  laboratoryId BigInt
-  drawCenterId BigInt?
-  orderNumber  String  @unique @db.VarChar(30)
+  id                         String                 @id @default(uuid()) @db.Uuid
+  userId                     String?                @db.Uuid
+  laboratoryId               String                 @db.Uuid
+  drawCenterId               String?                @db.Uuid
+  orderNumber                String                 @unique @db.VarChar(30)
+  currency                   String                 @default("USD") @db.Char(3)
+  subtotal                   Decimal                @default(0.00) @db.Decimal(10, 2)
+  tax                        Decimal                @default(0.00) @db.Decimal(10, 2)
+  processingFee              Decimal                @default(0.00) @db.Decimal(10, 2)
+  discount                   Decimal                @default(0.00) @db.Decimal(10, 2)
+  total                      Decimal                @default(0.00) @db.Decimal(10, 2)
+  paymentStatus              PaymentStatus          @default(PENDING)
+  paymentMethodType          PaymentMethodType?
+  orderStatus                OrderStatus            @default(PENDING_PAYMENT)
+  stripePaymentIntentId      String?                @unique
+  stripeChargeId             String?                @unique
+  stripePaymentMethodId      String?
+  accessSubmissionStatus     AccessSubmissionStatus @default(NOT_SUBMITTED)
+  accessOrderId              String?                @unique
+  accessClientId             String?
+  requisitionPdfUrl          String?
+  requisitionPdfPath         String?
+  labVisitInstructions       String?
+  manualReviewRequired       Boolean                @default(false)
+  accessPayloadJson          Json?
+  accessResponseJson         Json?
+  accessErrorMessage         String?
+  paymentSnapshotJson        Json?
+  labSubmissionPayloadJson   Json?
+  labSubmissionResponseJson  Json?
+  labSubmissionErrorCode     String?                @db.VarChar(100)
+  labSubmissionErrorMessage  String?
+  customerEmailSnapshot      String?                @db.VarChar(255)
+  customerPhoneSnapshot      String?                @db.VarChar(20)
+  pricingSnapshotJson        Json?
+  idempotencyKey             String?                @unique
+  labSubmissionAttempts      Int                    @default(0)
+  lastLabSubmissionAttemptAt DateTime?
+  lastPaymentEventId         String?                @db.VarChar(100)
+  paidAt                     DateTime?
+  placedAt                   DateTime?
+  userConfirmedAt            DateTime?
+  submittedToLabAt           DateTime?
+  labOrderPlacedAt           DateTime?
+  cancelledAt                DateTime?
+  refundAmount               Decimal?               @db.Decimal(10, 2)
+  refundReason               String?
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  currentTrackingStep        Int                    @default(1)
+  trackingUpdatedAt          DateTime?
+  notificationsSent          String[]               @default([])
+  lastNotificationAt         DateTime?
+  lastTransitionedAt         DateTime?
 
-  subtotal      Decimal @default(0.00) @db.Decimal(10, 2)
-  tax           Decimal @default(0.00) @db.Decimal(10, 2)
-  processingFee Decimal @default(0.00) @db.Decimal(10, 2)
-  discount      Decimal @default(0.00) @db.Decimal(10, 2)
-  total         Decimal @default(0.00) @db.Decimal(10, 2)
-
-  paymentStatus     PaymentStatus      @default(pending)
-  paymentMethodType PaymentMethodType?
-  orderStatus       OrderStatus        @default(pending)
-
-  stripePaymentIntentId String? @unique
-  stripeChargeId        String? @unique
-  stripePaymentMethodId String?
-
-  accessSubmissionStatus AccessSubmissionStatus @default(NOT_SUBMITTED)
-  accessOrderId          String?                @unique
-  accessClientId         String?
-  requisitionPdfUrl      String?
-  requisitionPdfPath     String?
-  labVisitInstructions   String?
-  manualReviewRequired   Boolean                @default(false)
-  accessPayloadJson      Json?
-  accessResponseJson     Json?
-  accessErrorMessage     String?
-
-  paidAt           DateTime?
-  submittedToLabAt DateTime?
-  labOrderPlacedAt DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  currentTrackingStep Int       @default(1)
-  trackingUpdatedAt   DateTime?
-  notificationsSent   String[]  @default([])
-  lastNotificationAt  DateTime?
-
+  drawCenter     DrawCenter?          @relation(fields: [drawCenterId], references: [id])
+  laboratory     Laboratory           @relation(fields: [laboratoryId], references: [id])
   user           User?                @relation(fields: [userId], references: [id])
-  laboratory     Laboratory           @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
-  drawCenter     DrawCenter?          @relation(fields: [drawCenterId], references: [id], onDelete: SetNull)
-  patient        OrderPatient?
   orderItems     OrderItem[]
-  requisitions   Requisition[]
+  patient        OrderPatient?
   promoCodes     OrderPromoCode[]
-  supportTickets SupportTicket[]
   trackingEvents OrderTrackingEvent[]
+  requisitions   Requisition[]
+  supportTickets SupportTicket[]
 
   @@index([userId])
   @@index([laboratoryId])
@@ -267,13 +357,14 @@ model Order {
   @@index([paymentMethodType])
   @@index([orderStatus])
   @@index([accessSubmissionStatus])
+  @@index([manualReviewRequired])
   @@index([paidAt])
   @@index([createdAt])
 }
 
 model OrderPatient {
-  id             String          @id @default(uuid())
-  orderId        String          @unique
+  id             String          @id @default(uuid()) @db.Uuid
+  orderId        String          @unique @db.Uuid
   relationToUser PatientRelation @default(SELF)
   firstName      String          @db.VarChar(100)
   lastName       String          @db.VarChar(100)
@@ -286,6 +377,7 @@ model OrderPatient {
   city           String?         @db.VarChar(100)
   state          String?         @db.Char(2)
   zipCode        String?         @db.VarChar(10)
+  metadata       Json?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -293,36 +385,60 @@ model OrderPatient {
 }
 
 model OrderItem {
-  id          BigInt  @id @default(autoincrement())
-  orderId     String
-  testId      BigInt
-  labTestCode String  @db.VarChar(50)
-  price       Decimal @default(0.00) @db.Decimal(10, 2)
-  labCost     Decimal @default(0.00) @db.Decimal(10, 2)
+  id                  String   @id @default(uuid()) @db.Uuid
+  orderId             String   @db.Uuid
+  testId              String   @db.Uuid
+  labTestId           String   @db.Uuid
+  labTestCode         String   @db.VarChar(50)
+  testName            String   @db.VarChar(255)
+  laboratoryName      String   @db.VarChar(255)
+  quantity            Int      @default(1)
+  baseRetailPrice     Decimal  @default(0.00) @db.Decimal(10, 2)
+  effectiveUnitPrice  Decimal  @default(0.00) @db.Decimal(10, 2)
+  discountAmount      Decimal  @default(0.00) @db.Decimal(10, 2)
+  price               Decimal  @default(0.00) @db.Decimal(10, 2)
+  labCost             Decimal  @default(0.00) @db.Decimal(10, 2)
+  currency            String   @default("USD") @db.Char(3)
+  pricingSnapshotJson Json?
+  createdAt           DateTime @default(now())
 
   order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  test         Test          @relation(fields: [testId], references: [id], onDelete: Restrict)
+  test         Test          @relation(fields: [testId], references: [id])
+  labTest      LabTest       @relation(fields: [labTestId], references: [id])
   requisitions Requisition[]
 
   @@index([orderId])
   @@index([testId])
+  @@index([labTestId])
 }
 
 model Requisition {
-  id                 BigInt            @id @default(autoincrement())
-  orderId            String
-  orderItemId        BigInt?
-  laboratoryId       BigInt?
-  requisitionNumber  String?           @db.VarChar(50)
-  requisitionPdfPath String?           @db.VarChar(500)
-  status             RequisitionStatus @default(generated)
-  labOrderId         String?           @db.VarChar(100)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                     String            @id @default(uuid()) @db.Uuid
+  orderId                String            @db.Uuid
+  orderItemId            String?           @db.Uuid
+  laboratoryId           String?           @db.Uuid
+  providerCode           String?           @db.VarChar(30)
+  requisitionNumber      String?           @db.VarChar(50)
+  requisitionPdfUrl      String?           @db.VarChar(500)
+  requisitionPdfPath     String?           @db.VarChar(500)
+  fileStorageKey         String?           @db.VarChar(500)
+  downloadFileName       String?           @db.VarChar(255)
+  labOrderId             String?           @db.VarChar(100)
+  status                 RequisitionStatus @default(PENDING)
+  rawPayloadJson         Json?
+  rawResponseJson        Json?
+  fileMetadataJson       Json?
+  drawCenterSnapshotJson Json?
+  submittedAt            DateTime?
+  readyAt                DateTime?
+  failedAt               DateTime?
+  resultsReadyAt         DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
+  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id])
   order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem  OrderItem?  @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
-  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+  orderItem  OrderItem?  @relation(fields: [orderItemId], references: [id])
 
   @@index([orderId])
   @@index([orderItemId])
@@ -333,40 +449,54 @@ model Requisition {
 }
 
 model PromoCode {
-  id            BigInt       @id @default(autoincrement())
-  code          String       @unique @db.VarChar(50)
-  discountType  DiscountType
-  discountValue Decimal      @default(0.00) @db.Decimal(10, 2)
-  minOrder      Decimal?     @db.Decimal(10, 2)
-  maxUses       Int?
-  usedCount     Int          @default(0)
-  startsAt      DateTime?
-  expiresAt     DateTime?
-  isActive      Boolean      @default(true)
+  id                  String               @id @default(uuid()) @db.Uuid
+  code                String               @unique @db.VarChar(50)
+  discountType        DiscountType
+  pricingStrategy     PromoPricingStrategy @default(PRICING_FLOOR)
+  status              PromoCodeStatus      @default(DRAFT)
+  discountValue       Decimal              @default(0.00) @db.Decimal(10, 2)
+  minOrder            Decimal?             @db.Decimal(10, 2)
+  minimumMarginAmount Decimal?             @db.Decimal(10, 2)
+  perUserLimit        Int?
+  maxUses             Int?
+  usedCount           Int                  @default(0)
+  startsAt            DateTime?
+  expiresAt           DateTime?
+  isActive            Boolean              @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   orderPromoCodes OrderPromoCode[]
 
   @@index([isActive])
   @@index([expiresAt])
+  @@index([status])
+  @@index([deletedAt])
 }
 
 model OrderPromoCode {
-  id             BigInt  @id @default(autoincrement())
-  orderId        String
-  promoCodeId    BigInt
-  discountAmount Decimal @default(0.00) @db.Decimal(10, 2)
+  id              String               @id @default(uuid()) @db.Uuid
+  orderId         String               @db.Uuid
+  promoCodeId     String               @db.Uuid
+  appliedCode     String               @db.VarChar(50)
+  discountType    DiscountType
+  discountValue   Decimal              @default(0.00) @db.Decimal(10, 2)
+  pricingStrategy PromoPricingStrategy @default(PRICING_FLOOR)
+  discountAmount  Decimal              @default(0.00) @db.Decimal(10, 2)
+  createdAt       DateTime             @default(now())
 
   order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  promoCode PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Restrict)
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id])
 
   @@index([orderId])
   @@index([promoCodeId])
 }
 
 model TestReview {
-  id                 String   @id @default(uuid())
-  testId             BigInt
-  userId             String
+  id                 String   @id @default(uuid()) @db.Uuid
+  testId             String   @db.Uuid
+  userId             String   @db.Uuid
   rating             Int      @db.SmallInt
   title              String   @db.VarChar(200)
   comment            String   @db.VarChar(1000)
@@ -387,9 +517,9 @@ model TestReview {
 }
 
 model ReviewHelpful {
-  id        String   @id @default(uuid())
-  reviewId  String
-  userId    String
+  id        String   @id @default(uuid()) @db.Uuid
+  reviewId  String   @db.Uuid
+  userId    String   @db.Uuid
   createdAt DateTime @default(now())
 
   review TestReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
@@ -401,52 +531,65 @@ model ReviewHelpful {
 }
 
 model OrderTrackingEvent {
-  id        String   @id @default(uuid())
-  orderId   String
-  step      Int
-  status    String   @db.VarChar(50)
-  message   String?  @db.VarChar(500)
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id             String                 @id @default(uuid()) @db.Uuid
+  orderId        String                 @db.Uuid
+  step           Int                    @default(0)
+  eventType      OrderTrackingEventType
+  actorType      TrackingActorType      @default(SYSTEM)
+  actorId        String?                @db.VarChar(100)
+  previousStatus OrderStatus?
+  nextStatus     OrderStatus?
+  message        String?                @db.VarChar(500)
+  metadata       Json?
+  occurredAt     DateTime               @default(now())
+  createdAt      DateTime               @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId, createdAt])
-  @@index([step, status])
+  @@index([eventType, createdAt])
 }
 
 model SupportTicket {
-  id             String    @id @default(uuid())
-  ticketNumber   String    @unique @db.VarChar(30)
-  userId         String
-  orderId        String?
-  subject        String    @db.VarChar(200)
-  category       String    @default("general") @db.VarChar(50)
-  priority       String    @default("medium") @db.VarChar(20)
-  status         String    @default("open") @db.VarChar(20)
-  responseTarget DateTime
-  respondedAt    DateTime?
-  resolvedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                      String                  @id @default(uuid()) @db.Uuid
+  ticketNumber            String                  @unique @db.VarChar(30)
+  userId                  String                  @db.Uuid
+  orderId                 String?                 @db.Uuid
+  subject                 String                  @db.VarChar(200)
+  category                SupportCategory         @default(GENERAL)
+  priority                SupportPriority         @default(MEDIUM)
+  status                  SupportTicketStatus     @default(OPEN)
+  reasonCode              SupportTicketReasonCode @default(GENERAL_REQUEST)
+  notes                   String?
+  failureContextJson      Json?
+  assigneeUserId          String?                 @db.Uuid
+  resolvedByUserId        String?                 @db.Uuid
+  resolutionNotes         String?
+  responseTarget          DateTime
+  manualReviewRequestedAt DateTime?
+  respondedAt             DateTime?
+  resolvedAt              DateTime?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
 
   messages SupportMessage[]
-  order    Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  order    Order?           @relation(fields: [orderId], references: [id])
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@index([priority, status])
   @@index([createdAt])
   @@index([orderId])
+  @@index([reasonCode, status])
 }
 
 model SupportMessage {
-  id         String   @id @default(uuid())
-  ticketId   String
-  senderId   String
-  senderType String   @db.VarChar(20)
-  message    String   @db.Text
-  createdAt  DateTime @default(now())
+  id         String            @id @default(uuid()) @db.Uuid
+  ticketId   String            @db.Uuid
+  senderId   String            @db.Uuid
+  senderType SupportSenderType
+  message    String
+  createdAt  DateTime          @default(now())
 
   sender User          @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -456,8 +599,8 @@ model SupportMessage {
 }
 
 model PushToken {
-  id        Int      @id @default(autoincrement())
-  userId    String?
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
   token     String   @unique
   platform  String?
   revoked   Boolean  @default(false)
@@ -470,8 +613,8 @@ model PushToken {
 }
 
 model Notification {
-  id           String               @id @default(uuid())
-  userId       String
+  id           String               @id @default(uuid()) @db.Uuid
+  userId       String               @db.Uuid
   type         NotificationType
   title        String               @db.VarChar(200)
   body         String
@@ -493,7 +636,7 @@ model Notification {
 }
 
 model NotificationTemplate {
-  id           String           @id @default(uuid())
+  id           String           @id @default(uuid()) @db.Uuid
   type         NotificationType @unique
   name         String           @db.VarChar(200)
   description  String?
@@ -510,8 +653,8 @@ model NotificationTemplate {
 }
 
 model AuditLog {
-  id            String   @id @default(uuid())
-  adminId       String
+  id            String   @id @default(uuid()) @db.Uuid
+  adminId       String   @db.Uuid
   adminName     String
   action        String   @db.VarChar(50)
   resource      String   @db.VarChar(100)
@@ -521,7 +664,7 @@ model AuditLog {
   changesAfter  String?
   ipAddress     String?  @db.VarChar(50)
   userAgent     String?
-  status        String   @default("success") @db.VarChar(20)
+  status        String   @default("SUCCESS") @db.VarChar(20)
   errorMessage  String?
   createdAt     DateTime @default(now())
 
@@ -571,6 +714,11 @@ enum NotificationType {
   WELCOME
   ACCOUNT_VERIFIED
   PASSWORD_RESET
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  REQUISITION_READY
+  LAB_SUBMISSION_FAILED
+  MANUAL_REVIEW_REQUIRED
 }
 
 enum NotificationPriority {
@@ -580,15 +728,19 @@ enum NotificationPriority {
 }
 
 enum RestrictionType {
-  blocked
-  requires_physician
+  BLOCKED
+  REQUIRES_PHYSICIAN
 }
 
 enum PaymentStatus {
-  pending
-  paid
-  failed
-  refunded
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  REQUIRES_ACTION
 }
 
 enum PaymentMethodType {
@@ -597,11 +749,20 @@ enum PaymentMethodType {
 }
 
 enum OrderStatus {
-  pending
-  processing
-  requisition_sent
-  completed
-  cancelled
+  CART
+  PENDING_PATIENT_INFO
+  PENDING_PAYMENT
+  PAYMENT_FAILED
+  PAID
+  AWAITING_USER_CONFIRMATION
+  READY_FOR_LAB_SUBMISSION
+  LAB_SUBMISSION_IN_PROGRESS
+  LAB_SUBMISSION_FAILED
+  MANUAL_REVIEW_REQUIRED
+  SUBMITTED_TO_LAB
+  REQUISITION_READY
+  COMPLETED
+  CANCELLED
 }
 
 enum AccessSubmissionStatus {
@@ -613,16 +774,17 @@ enum AccessSubmissionStatus {
 }
 
 enum RequisitionStatus {
-  generated
-  sent_to_lab
-  specimen_collected
-  processing
-  results_ready
+  PENDING
+  RECEIVED
+  FILE_STORED
+  READY
+  FAILED
+  CANCELLED
 }
 
 enum DiscountType {
-  percent
-  fixed
+  PERCENT
+  FIXED
 }
 
 enum PatientRelation {
@@ -631,4 +793,78 @@ enum PatientRelation {
   CHILD
   PARENT
   OTHER
+}
+
+enum SupportCategory {
+  GENERAL
+  BILLING
+  ORDER
+  TECHNICAL
+  RESULTS
+}
+
+enum SupportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportTicketStatus {
+  OPEN
+  AWAITING_ADMIN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportSenderType {
+  CUSTOMER
+  ADMIN
+  SYSTEM
+}
+
+enum PromoCodeStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+enum PromoPricingStrategy {
+  PRICING_FLOOR
+  PURE_DISCOUNT
+}
+
+enum OrderTrackingEventType {
+  CART_VALIDATED
+  ORDER_CREATED
+  PAYMENT_INTENT_CREATED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  USER_CONFIRMED_ORDER
+  LAB_SUBMISSION_STARTED
+  LAB_SUBMISSION_SUCCEEDED
+  LAB_SUBMISSION_FAILED
+  REQUISITION_CREATED
+  SUPPORT_TICKET_CREATED
+  ADMIN_RESEND_TRIGGERED
+}
+
+enum TrackingActorType {
+  CUSTOMER
+  ADMIN
+  SYSTEM
+  WORKER
+  WEBHOOK
+}
+
+enum SupportTicketReasonCode {
+  GENERAL_REQUEST
+  LAB_SUBMISSION_FAILURE
+  PAYMENT_ISSUE
+  REQUISITION_ISSUE
+  ADMIN_REVIEW_REQUEST
 }
