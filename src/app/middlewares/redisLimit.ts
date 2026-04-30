@@ -67,5 +67,5 @@ export const cartSyncLimiter = createRateLimiter(120, 5, 'cart-sync', (req) => {
   const userId = req.user?.id;
   if (userId) return `user:${userId}`;
 
-  return 'anonymous';
+  return req.headers['x-forwarded-for']?.toString().split(',')[0] || req.ip;
 });
