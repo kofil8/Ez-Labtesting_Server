@@ -14,8 +14,8 @@ import {
 const prisma = new PrismaClient();
 
 const TESTS_JSON_PATH = path.join(__dirname, '..', 'medical-tests.json');
-const PRICING_SQL_PATH = resolveSeedInputFile('PRICING_SQL_PATH', 'pricing (2).sql');
-const LABORATORIES_SQL_PATH = resolveSeedInputFile('LABORATORIES_SQL_PATH', 'laboratories (2).sql');
+const PRICING_SQL_PATH = resolveSeedInputFile('PRICING_SQL_PATH', 'pricing.sql');
+const LABORATORIES_SQL_PATH = resolveSeedInputFile('LABORATORIES_SQL_PATH', 'laboratories.sql');
 const DEFAULT_CURRENCY = 'USD';
 const LABTEST_BATCH_SIZE = 50;
 const MAX_LAB_TEST_CODE_LENGTH = 50;
@@ -37,7 +37,10 @@ const TEST_NAME_ALIAS_TO_SLUG = new Map<string, string>(
     ['Pregnenolone', 'pregnenolone-lc-ms-ms'],
     ['Reverse T3', 'reverse-t3-lc-ms-ms'],
     ['RUBEOLA AB, IgG', 'measles-rubeola-igg'],
-    ['Testosterone LC/MS/MS, Free & Total w/SHBG', 'testosterone-free-testosterone-total-lcmsms-with-shbg'],
+    [
+      'Testosterone LC/MS/MS, Free & Total w/SHBG',
+      'testosterone-free-testosterone-total-lcmsms-with-shbg',
+    ],
     ['Zinc RBC', 'zinc-packed-rbc'],
   ].map(([alias, slug]) => [normalizeMatchName(alias), slug]),
 );
@@ -403,7 +406,8 @@ async function seedLabTests() {
     const reservedCodesByLaboratory = new Map<string, Map<string, string>>();
 
     for (const existingLabTest of existingLabTests) {
-      const reservedCodes = reservedCodesByLaboratory.get(existingLabTest.laboratoryId) ?? new Map();
+      const reservedCodes =
+        reservedCodesByLaboratory.get(existingLabTest.laboratoryId) ?? new Map();
       reservedCodes.set(existingLabTest.labTestCode, existingLabTest.testId);
       reservedCodesByLaboratory.set(existingLabTest.laboratoryId, reservedCodes);
     }
