@@ -12,7 +12,7 @@ import { socketManager } from '../../helpers/socketManager';
 import logger from '../../utils/logger';
 import { renderNotificationTemplate, validateTemplateData } from '../../utils/templateRenderer';
 
-const appUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const appUrl = (process.env.FRONTEND_URL || 'https://ezlabtesting.com').replace(/\/+$/, '');
 
 const priorityMapping: Record<NotificationType, NotificationPriority> = {
   ORDER_CREATED: 'MEDIUM',

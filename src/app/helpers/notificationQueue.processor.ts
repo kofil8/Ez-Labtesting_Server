@@ -6,7 +6,8 @@ import emailSender from '../utils/emailSender';
 import logger from '../utils/logger';
 import { socketManager } from './socketManager';
 
-const frontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const frontendUrl = () =>
+  (process.env.FRONTEND_URL || 'https://ezlabtesting.com').replace(/\/+$/, '');
 
 const appendDeliveredVia = async (notificationId: string, channel: string) => {
   const currentDeliveredVia =

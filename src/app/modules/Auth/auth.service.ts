@@ -215,7 +215,7 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
   try {
     await NotificationService.sendTemplateNotification(verifiedUser.id, 'ACCOUNT_VERIFIED', {
       userName: [verifiedUser.firstName, verifiedUser.lastName].filter(Boolean).join(' ') || 'there',
-      appLink: process.env.FRONTEND_URL || 'http://localhost:3000',
+      appLink: process.env.FRONTEND_URL || 'https://ezlabtesting.com',
       clickAction: '/dashboard',
     });
   } catch (error) {
@@ -337,7 +337,7 @@ const loginUserFromDB = async (payload: LoginPayload, ip: string) => {
     try {
       await NotificationService.sendTemplateNotification(user.id, 'WELCOME', {
         userName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'there',
-        appLink: process.env.FRONTEND_URL || 'http://localhost:3000',
+        appLink: process.env.FRONTEND_URL || 'https://ezlabtesting.com',
         clickAction: '/dashboard',
       });
     } catch (error) {

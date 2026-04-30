@@ -17,17 +17,15 @@ const initializeFirebaseAdmin = () => {
   if (serviceAccountPath) {
     const absolutePath = path.resolve(process.cwd(), serviceAccountPath);
 
-    if (!fs.existsSync(absolutePath)) {
-      throw new Error(`Firebase service account file not found at: ${absolutePath}`);
+    if (fs.existsSync(absolutePath)) {
+      const serviceAccount = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+
+      firebaseApp = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+
+      return firebaseApp;
     }
-
-    const serviceAccount = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
-
-    firebaseApp = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-
-    return firebaseApp;
   }
 
   const projectId = process.env.FIREBASE_PROJECT_ID;

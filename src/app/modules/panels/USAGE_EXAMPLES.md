@@ -9,7 +9,7 @@
 **Scenario:** Admin creates a "Women's Wellness Complete" panel with 6 tests
 
 ```bash
-curl -X POST http://localhost:3000/api/panels \
+curl -X POST https://ezlabtesting.com/api/panels \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -113,7 +113,7 @@ curl -X POST http://localhost:3000/api/panels \
 **Scenario:** Customer wants to see all available panels
 
 ```bash
-curl "http://localhost:3000/api/panels" \
+curl "https://ezlabtesting.com/api/panels" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -173,7 +173,7 @@ curl "http://localhost:3000/api/panels" \
 **Scenario:** Customer searches for "wellness" with pagination
 
 ```bash
-curl "http://localhost:3000/api/panels?searchTerm=wellness&page=1&limit=5" \
+curl "https://ezlabtesting.com/api/panels?searchTerm=wellness&page=1&limit=5" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -216,7 +216,7 @@ curl "http://localhost:3000/api/panels?searchTerm=wellness&page=1&limit=5" \
 **Scenario:** Customer wants panels between $100-$300
 
 ```bash
-curl "http://localhost:3000/api/panels?minPrice=100&maxPrice=300&sortBy=basePrice&sortOrder=asc" \
+curl "https://ezlabtesting.com/api/panels?minPrice=100&maxPrice=300&sortBy=basePrice&sortOrder=asc" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -270,7 +270,7 @@ curl "http://localhost:3000/api/panels?minPrice=100&maxPrice=300&sortBy=basePric
 **Scenario:** Customer wants to see full details of "Women's Wellness Complete"
 
 ```bash
-curl "http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446655440000" \
+curl "https://ezlabtesting.com/api/panels/panel-550e8400-e29b-41d4-a716-446655440000" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -359,7 +359,7 @@ curl "http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-44665544000
 **Scenario:** Admin wants to increase discount from 15% to 20% for Women's Wellness
 
 ```bash
-curl -X PATCH http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
+curl -X PATCH https://ezlabtesting.com/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -393,7 +393,7 @@ curl -X PATCH http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446
 **Scenario:** Admin wants to change the order of tests in the panel
 
 ```bash
-curl -X PATCH http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
+curl -X PATCH https://ezlabtesting.com/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -440,7 +440,7 @@ curl -X PATCH http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446
 **Scenario:** Admin wants to hide a panel from customers
 
 ```bash
-curl -X PATCH http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
+curl -X PATCH https://ezlabtesting.com/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -455,7 +455,7 @@ curl -X PATCH http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446
 **Scenario:** Admin wants to remove an outdated panel
 
 ```bash
-curl -X DELETE http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://ezlabtesting.com/api/panels/panel-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -484,7 +484,7 @@ curl -X DELETE http://localhost:3000/api/panels/panel-550e8400-e29b-41d4-a716-44
 **Scenario:** Admin wants to see all active panels priced $150-$300, sorted by discount
 
 ```bash
-curl "http://localhost:3000/api/panels?isActive=true&minPrice=150&maxPrice=300&sortBy=discountPercent&sortOrder=desc&page=1&limit=10" \
+curl "https://ezlabtesting.com/api/panels?isActive=true&minPrice=150&maxPrice=300&sortBy=discountPercent&sortOrder=desc&page=1&limit=10" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -538,7 +538,7 @@ curl "http://localhost:3000/api/panels?isActive=true&minPrice=150&maxPrice=300&s
 ### ❌ Unauthorized Access (Non-Admin Trying to Create)
 
 ```bash
-curl -X POST http://localhost:3000/api/panels \
+curl -X POST https://ezlabtesting.com/api/panels \
   -H "Authorization: Bearer customer-token" \
   -d '{...}'
 ```
@@ -555,7 +555,7 @@ curl -X POST http://localhost:3000/api/panels \
 ### ❌ Duplicate Slug
 
 ```bash
-curl -X POST http://localhost:3000/api/panels \
+curl -X POST https://ezlabtesting.com/api/panels \
   -H "Authorization: Bearer admin-token" \
   -d '{
     "name": "New Panel",
@@ -576,7 +576,7 @@ curl -X POST http://localhost:3000/api/panels \
 ### ❌ Invalid Test IDs
 
 ```bash
-curl -X POST http://localhost:3000/api/panels \
+curl -X POST https://ezlabtesting.com/api/panels \
   -H "Authorization: Bearer admin-token" \
   -d '{
     "name": "New Panel",
@@ -597,7 +597,7 @@ curl -X POST http://localhost:3000/api/panels \
 ### ❌ Panel Not Found
 
 ```bash
-curl http://localhost:3000/api/panels/non-existent-id \
+curl https://ezlabtesting.com/api/panels/non-existent-id \
   -H "Authorization: Bearer token"
 ```
 
@@ -618,7 +618,7 @@ curl http://localhost:3000/api/panels/non-existent-id \
 // Get all active panels under $300
 const getPanels = async (token: string) => {
   const response = await fetch(
-    'http://localhost:3000/api/panels?isActive=true&maxPrice=300&limit=10',
+    'https://ezlabtesting.com/api/panels?isActive=true&maxPrice=300&limit=10',
     {
       headers: { Authorization: `Bearer ${token}` },
     },
@@ -628,7 +628,7 @@ const getPanels = async (token: string) => {
 
 // Create a new panel (admin)
 const createPanel = async (adminToken: string, panelData: any) => {
-  const response = await fetch('http://localhost:3000/api/panels', {
+  const response = await fetch('https://ezlabtesting.com/api/panels', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${adminToken}`,
@@ -641,7 +641,7 @@ const createPanel = async (adminToken: string, panelData: any) => {
 
 // Get specific panel details
 const getPanelDetails = async (panelId: string, token: string) => {
-  const response = await fetch(`http://localhost:3000/api/panels/${panelId}`, {
+  const response = await fetch(`https://ezlabtesting.com/api/panels/${panelId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return response.json();
@@ -649,7 +649,7 @@ const getPanelDetails = async (panelId: string, token: string) => {
 
 // Update panel discount
 const updatePanel = async (panelId: string, adminToken: string, updates: any) => {
-  const response = await fetch(`http://localhost:3000/api/panels/${panelId}`, {
+  const response = await fetch(`https://ezlabtesting.com/api/panels/${panelId}`, {
     method: 'PATCH',
     headers: {
       Authorization: `Bearer ${adminToken}`,

@@ -1,15 +1,16 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { env } from './env';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 export default {
-  database_url: process.env.DATABASE_URL,
-  redis_url: process.env.REDIS_URL,
-  env: process.env.NODE_ENV,
-  frontend_url: process.env.FRONTEND_URL,
-  backend_file_url: process.env.BACKEND_FILE_URL,
-  backend_base_url: process.env.BACKEND_BASE_URL,
+  database_url: env.DATABASE_URL,
+  redis_url: env.REDIS_URL,
+  env: env.NODE_ENV,
+  frontend_url: env.FRONTEND_URL,
+  backend_file_url: env.BACKEND_FILE_URL,
+  backend_base_url: env.BACKEND_BASE_URL,
   super_admin_first_name: process.env.SUPER_ADMIN_FIRST_NAME as string,
   super_admin_last_name: process.env.SUPER_ADMIN_LAST_NAME as string,
   super_admin_gender: process.env.SUPER_ADMIN_GENDER as string,
@@ -18,21 +19,21 @@ export default {
   super_admin_password: process.env.SUPER_ADMIN_PASSWORD as string,
   super_admin_phone: process.env.SUPER_ADMIN_PHONE as string,
   super_admin_is_verified: process.env.IS_VERIFIED === 'true',
-  port: process.env.PORT || 9001,
+  port: env.PORT,
   salt: process.env.SALT || 12,
 
   aws: {
-    region: process.env.AWS_REGION as string,
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID as string,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY as string,
-    s3BucketName: process.env.AWS_S3_BUCKET_NAME as string,
+    region: env.AWS_REGION,
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    s3BucketName: env.AWS_S3_BUCKET_NAME,
   },
 
   jwt: {
-    jwt_secret: process.env.JWT_SECRET!,
-    expires_in: process.env.EXPIRES_IN! as `${number}${'s' | 'm' | 'h' | 'd'}`,
-    refresh_token_secret: process.env.REFRESH_TOKEN_SECRET!,
-    refresh_token_expires_in: process.env.REFRESH_TOKEN_EXPIRES_IN! as `${number}${
+    jwt_secret: env.JWT_SECRET,
+    expires_in: env.EXPIRES_IN as `${number}${'s' | 'm' | 'h' | 'd'}`,
+    refresh_token_secret: env.REFRESH_TOKEN_SECRET,
+    refresh_token_expires_in: env.REFRESH_TOKEN_EXPIRES_IN as `${number}${
       | 's'
       | 'm'
       | 'h'

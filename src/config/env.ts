@@ -7,11 +7,29 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(7001),
   SERVER_URL: z.string().default('http://localhost:7001'),
+  BACKEND_BASE_URL: z.string().default('http://localhost:7001'),
+  BACKEND_FILE_URL: z.string().default('http://localhost:7001'),
   DATABASE_URL: z.string(),
   REDIS_URL: z.string(),
   JWT_SECRET: z.string(),
   EXPIRES_IN: z.string().default('15m'),
+  REFRESH_TOKEN_SECRET: z.string(),
+  REFRESH_TOKEN_EXPIRES_IN: z.string().default('1d'),
   AUTH_SESSION_DEBUG: z.preprocess((v) => v === 'true' || v === true, z.boolean()).default(false),
+
+  // Browser auth / cross-origin deployment
+  ALLOWED_ORIGINS: z.string().optional().default(''),
+  COOKIE_DOMAIN: z.string().optional().default(''),
+  COOKIE_SAME_SITE: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+      z.enum(['lax', 'strict', 'none']),
+    )
+    .optional()
+    .default('lax'),
+  COOKIE_SECURE: z.preprocess((v) => v === 'true' || v === true, z.boolean()).optional(),
+  TRUST_PROXY: z.string().optional().default(''),
+
   AWS_REGION: z.string().optional().default(''),
   AWS_ACCESS_KEY_ID: z.string().optional().default(''),
   AWS_SECRET_ACCESS_KEY: z.string().optional().default(''),
@@ -41,12 +59,21 @@ const envSchema = z.object({
   SMTP_SECURE: z.preprocess((v) => v === 'true' || v === true, z.boolean()).default(false),
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASS: z.string().optional().default(''),
+  SMTP_EMAIL: z.string().optional().default(''),
+  SMTP_EMAIL_PASSWORD: z.string().optional().default(''),
+  SMTP_FROM: z.string().optional().default(''),
   SMTP_FROM_EMAIL: z.string().email().optional().default('noreply@ezlabtesting.com'),
   SMTP_FROM_NAME: z.string().optional().default('Ez Lab Testing'),
   OTP_IMAGE_URL: z.string().optional().default(''),
 
   // Client URL for emails and CORS
-  FRONTEND_URL: z.string().default('http://localhost:3000'),
+  FRONTEND_URL: z.string().default('https://ezlabtesting.com'),
+
+  // Firebase Cloud Messaging
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional().default(''),
+  FIREBASE_PROJECT_ID: z.string().optional().default(''),
+  FIREBASE_CLIENT_EMAIL: z.string().optional().default(''),
+  FIREBASE_PRIVATE_KEY: z.string().optional().default(''),
 
   // Pricing / Fees
   PAYMENT_CURRENCY: z.string().default('usd'),
@@ -72,6 +99,35 @@ const envSchema = z.object({
 
   // Socket.IO Reconnection Window (in minutes)
   SOCKET_RECONNECTION_WINDOW: z.coerce.number().default(5),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') {
+    return;
+  }
+
+  const publicUrls = [
+    ['FRONTEND_URL', value.FRONTEND_URL],
+    ['SERVER_URL', value.SERVER_URL],
+    ['BACKEND_BASE_URL', value.BACKEND_BASE_URL],
+    ['BACKEND_FILE_URL', value.BACKEND_FILE_URL],
+  ];
+
+  publicUrls.forEach(([key, url]) => {
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} must not point to localhost in production.`,
+      });
+    }
+  });
+
+  if (value.COOKIE_SAME_SITE === 'none' && value.COOKIE_SECURE === false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['COOKIE_SECURE'],
+      message: 'COOKIE_SECURE must be true when COOKIE_SAME_SITE=none.',
+    });
+  }
 });
 
 export const env = envSchema.parse(process.env);

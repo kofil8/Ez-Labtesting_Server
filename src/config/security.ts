@@ -2,7 +2,7 @@ import { CorsOptions } from 'cors';
 import { NextFunction, Request, Response } from 'express';
 
 const PRODUCTION_ORIGINS = ['https://ezlabtesting.com', 'https://www.ezlabtesting.com'];
-const DEVELOPMENT_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const DEVELOPMENT_ORIGINS = ['https://ezlabtesting.com', 'http://127.0.0.1:3000'];
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 const splitCsv = (value?: string | null) =>
@@ -67,12 +67,7 @@ export const buildCorsOptions = (allowedOrigins = getAllowedOrigins()): CorsOpti
   },
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
-  exposedHeaders: [
-    'RateLimit-Limit',
-    'RateLimit-Remaining',
-    'RateLimit-Reset',
-    'Retry-After',
-  ],
+  exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'Retry-After'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 });
 
