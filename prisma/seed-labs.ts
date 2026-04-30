@@ -1,12 +1,8 @@
 import { PrismaClient } from '@prisma/client';
-import {
-  parseLaboratoryRowsFromSql,
-  readUtf8File,
-  resolveSeedInputFile,
-} from './seed-utils';
+import { parseLaboratoryRowsFromSql, readUtf8File, resolveSeedInputFile } from './seed-utils';
 
 const prisma = new PrismaClient();
-const LABORATORIES_SQL_PATH = resolveSeedInputFile('LABORATORIES_SQL_PATH', 'laboratories (2).sql');
+const LABORATORIES_SQL_PATH = resolveSeedInputFile('LABORATORIES_SQL_PATH', 'laboratories.sql');
 
 const applyLaboratoryVisibilityPolicy = (code: string, isActiveFromSql: boolean) => {
   const normalizedCode = code.toUpperCase();
