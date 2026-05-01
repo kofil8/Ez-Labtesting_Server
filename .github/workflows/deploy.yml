@@ -10,9 +10,6 @@ concurrency:
   group: backend-deploy-main
   cancel-in-progress: true
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   verify:
     name: Verify build
