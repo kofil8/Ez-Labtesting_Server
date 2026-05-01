@@ -1,10 +1,11 @@
 {
   "name": "ezlabtesting",
   "version": "1.0.0",
-  "description": "Ez Lab Testing is an online laboratory test ordering and result delivery platform.",
+  "description": "Ez LabTesting is an online laboratory test ordering and result delivery platform.",
   "main": "dist/server.js",
-  "author": "Ez Lab Testing <info@ezlabtesting.com>",
+  "author": "Ez LabTesting <info@ezlabtesting.com>",
   "license": "MIT",
+  "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
@@ -13,17 +14,20 @@
     "lint:fix": "eslint . --ext .ts --fix",
     "test": "jest --runInBand",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:studio": "npx prisma studio",
-    "prisma:reset": "prisma migrate reset --force",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
     "seed:categories": "ts-node -r tsconfig-paths/register prisma/seed-categories.ts",
     "seed:labs": "ts-node -r tsconfig-paths/register prisma/seed-labs.ts",
     "seed:users": "ts-node -r tsconfig-paths/register prisma/seed-user.ts",
     "seed:promocodes": "ts-node -r tsconfig-paths/register prisma/seed-promocodes.ts",
     "seed:tests": "ts-node -r tsconfig-paths/register prisma/seed-tests.ts",
     "seed:labtests": "ts-node -r tsconfig-paths/register prisma/seed-labtests.ts",
-    "seed:all": "npm run seed:categories && npm run seed:labs && npm run seed:tests && npm run seed:labtests && npm run seed:users && npm run seed:promocodes",
+    "seed:all": "yarn seed:categories && yarn seed:labs && yarn seed:tests && yarn seed:labtests && yarn seed:users && yarn seed:promocodes",
     "s3:migrate": "ts-node -r tsconfig-paths/register src/scripts/migrate-to-s3.ts"
+  },
+  "engines": {
+    "node": ">=18 <=22",
+    "yarn": ">=1.22.0"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.940.0",
@@ -33,7 +37,6 @@
     "@bull-board/ui": "^6.15.0",
     "@prisma/client": "6.8.2",
     "@socket.io/redis-adapter": "^8.3.0",
-    "@types/qrcode": "^1.5.6",
     "axios": "^1.7.7",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
@@ -62,7 +65,6 @@
     "rate-limit-redis": "^4.3.0",
     "redis": "5.11.0",
     "socket.io": "^4.8.1",
-    "socket.io-adapter": "^2.5.5",
     "speakeasy": "^2.0.0",
     "stripe": "^20.3.0",
     "uuid": "^11.0.2",
@@ -77,27 +79,20 @@
     "@types/handlebars": "^4.1.0",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.6",
-    "@types/jspdf": "^2.0.0",
     "@types/morgan": "^1.9.8",
     "@types/multer": "^2.0.0",
     "@types/multer-s3": "^3.0.3",
-    "@types/node": "^25.6.0",
-    "@types/node-cron": "^3.0.11",
-    "@types/nodemailer": "^7.0.4",
-    "@types/web-push": "^3.6.4",
+    "@types/node": "^20.11.30",
     "eslint": "^9.12.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.30.0",
     "jest": "^30.0.0",
-    "prisma": "6.8.2",
     "ts-jest": "^29.4.6",
+    "prisma": "6.8.2",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.9.3"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "typescript": "^5.4.5"
   },
   "repository": "https://github.com/kofil8/Ez-Labtesting_Server.git"
 }
