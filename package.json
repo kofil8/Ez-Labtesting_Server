@@ -6,6 +6,7 @@
   "author": "Ez LabTesting <info@ezlabtesting.com>",
   "license": "MIT",
   "private": true,
+  "packageManager": "yarn@1.22.22",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
@@ -26,7 +27,7 @@
     "s3:migrate": "ts-node -r tsconfig-paths/register src/scripts/migrate-to-s3.ts"
   },
   "engines": {
-    "node": ">=18 <=22",
+    "node": ">=18",
     "yarn": ">=1.22.0"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
     "@bull-board/ui": "^6.15.0",
     "@prisma/client": "6.8.2",
     "@socket.io/redis-adapter": "^8.3.0",
+    "socket.io-adapter": "^2.5.5",
     "axios": "^1.7.7",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
@@ -76,7 +78,6 @@
     "@types/bcryptjs": "^2.4.3",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.6",
-    "@types/handlebars": "^4.1.0",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/morgan": "^1.9.8",
