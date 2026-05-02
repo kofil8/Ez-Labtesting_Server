@@ -180,13 +180,24 @@ class StateRestrictionService {
   }
 
   resolveClientIp(req: Request) {
-    if (typeof req.ip === 'string' && req.ip.trim()) {
-      return req.ip.trim();
+    const headerCandidates = [
+      req.headers['cf-connecting-ip'],
+      req.headers['x-vercel-forwarded-for'],
+      req.headers['x-real-ip'],
+      req.headers['x-forwarded-for'],
+    ];
+
+    for (const candidate of headerCandidates) {
+      const rawValue = Array.isArray(candidate) ? candidate[0] : candidate;
+      const ip = rawValue?.split(',')[0]?.trim();
+
+      if (ip) {
+        return ip;
+      }
     }
 
-    const realIp = req.headers['x-real-ip'];
-    if (typeof realIp === 'string' && realIp.trim()) {
-      return realIp.trim();
+    if (typeof req.ip === 'string' && req.ip.trim()) {
+      return req.ip.trim();
     }
 
     return req.ip || null;
@@ -208,21 +219,7 @@ class StateRestrictionService {
       return requestIp;
     }
 
-    try {
-      const response = await axios.get(env.PUBLIC_IP_LOOKUP_URL_TEMPLATE, {
-        timeout: env.PUBLIC_IP_LOOKUP_TIMEOUT_MS,
-      });
-      const data = response.data as { ip?: string };
-      const fallbackIp = this.normalizeIp(data?.ip);
-
-      if (fallbackIp && !this.isPrivateOrLocalIp(fallbackIp)) {
-        return fallbackIp;
-      }
-    } catch {
-      return null;
-    }
-
-    return requestIp;
+    return null;
   }
 
   resolveStateFromGeoHeaders(req: Request) {

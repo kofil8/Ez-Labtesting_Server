@@ -185,9 +185,7 @@ describe('stateRestrictionService location status', () => {
     });
   });
 
-  it('returns a safe allowed response when no geo signal is available', async () => {
-    mockedAxios.get.mockResolvedValue({ data: { ip: null } });
-
+  it('returns a safe allowed response when no trustworthy public ip is available', async () => {
     const result = await stateRestrictionService.getLocationStatus({
       req: {
         headers: {},
@@ -196,20 +194,20 @@ describe('stateRestrictionService location status', () => {
     });
 
     expect(result).toMatchObject({
-      ip: '127.0.0.1',
+      ip: null,
       detectedStateCode: null,
       effectiveStateCode: null,
       laboratoryRoute: 'ACCESS',
       restrictionType: null,
       canOrder: true,
       source: 'unknown',
-      maskedIp: '127.xxx.xxx.1',
+      maskedIp: null,
     });
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedAxios.get).not.toHaveBeenCalled();
     expect(mockedPrisma.stateRestriction.findFirst).not.toHaveBeenCalled();
   });
 
-  it('uses the external public ip fallback to derive region when request ip is local', async () => {
+  it('does not use the backend public ip as a visitor fallback', async () => {
     mockedAxios.get.mockImplementation(async (url: string) => {
       if (url === 'https://api.ipify.org?format=json') {
         return { data: { ip: '203.0.113.24' } };
@@ -236,14 +234,54 @@ describe('stateRestrictionService location status', () => {
     });
 
     expect(result).toMatchObject({
-      ip: '203.0.113.24',
-      maskedIp: '203.xxx.xxx.24',
-      detectedStateCode: 'CA',
-      effectiveStateCode: 'CA',
+      ip: null,
+      maskedIp: null,
+      detectedStateCode: null,
+      effectiveStateCode: null,
       laboratoryRoute: 'ACCESS',
       restrictionType: null,
       canOrder: true,
+      source: 'unknown',
+    });
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['cf-connecting-ip', { 'cf-connecting-ip': '198.51.100.10' }, '198.51.100.10'],
+    ['x-real-ip', { 'x-real-ip': '198.51.100.11' }, '198.51.100.11'],
+    [
+      'first x-forwarded-for value',
+      { 'x-forwarded-for': '198.51.100.12, 10.0.0.2' },
+      '198.51.100.12',
+    ],
+  ])('resolves visitor ip from %s', async (_label, headers, expectedIp) => {
+    mockedAxios.get.mockResolvedValue({
+      data: {
+        success: true,
+        country_code: 'US',
+        region_code: 'TX',
+      },
+    });
+
+    const result = await stateRestrictionService.getLocationStatus({
+      req: {
+        headers,
+        ip: '127.0.0.1',
+      } as any,
+    });
+
+    expect(result).toMatchObject({
+      ip: expectedIp,
+      maskedIp: `${expectedIp.split('.')[0]}.xxx.xxx.${expectedIp.split('.')[3]}`,
+      detectedStateCode: 'TX',
+      effectiveStateCode: 'TX',
       source: 'ip_lookup',
+    });
+    expect(mockedAxios.get).toHaveBeenCalledWith(`https://ipwho.is/${expectedIp}`, {
+      timeout: 3000,
+    });
+    expect(mockedAxios.get).not.toHaveBeenCalledWith('https://api.ipify.org?format=json', {
+      timeout: 3000,
     });
   });
 

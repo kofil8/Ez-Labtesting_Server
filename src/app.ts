@@ -10,7 +10,12 @@ import GlobalErrorHandler from './app/middlewares/globalErrorHandler';
 import { defaultLimiter } from './app/middlewares/redisLimit';
 import router from './app/routes';
 import logger from './app/utils/logger';
-import { buildCorsOptions, enforceTrustedOrigin, getAllowedOrigins } from './config/security';
+import {
+  buildCorsOptions,
+  enforceTrustedOrigin,
+  getAllowedOrigins,
+  getTrustProxySetting,
+} from './config/security';
 
 const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
