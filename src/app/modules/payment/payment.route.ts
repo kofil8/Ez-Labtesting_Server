@@ -1,6 +1,7 @@
 import { Role } from '@prisma/client';
 import express, { Router } from 'express';
 import auth from '../../middlewares/auth';
+import { enforceCustomerOrderingAvailability } from '../../middlewares/enforceCustomerOrderingAvailability';
 import { paymentController } from './payment.controller';
 import { webhookController } from './webhook.controller';
 
@@ -17,16 +18,22 @@ router.post('/webhook', (req, res) => webhookController.handleStripeWebhook(req,
  * @description Create (or reuse) a PaymentIntent for an existing Order.
  * Amount is derived from DB (tamper-proof).
  */
-router.post('/order-intent', auth(Role.CUSTOMER), (req, res) =>
-  paymentController.createPaymentIntentForOrder(req, res),
+router.post(
+  '/order-intent',
+  auth(Role.CUSTOMER),
+  enforceCustomerOrderingAvailability,
+  (req, res) => paymentController.createPaymentIntentForOrder(req, res),
 );
 
 /**
  * @route POST /payment/confirm-payment-intent
  * @description Confirm payment intent status (client polling helper)
  */
-router.post('/confirm-payment-intent', auth(Role.CUSTOMER), (req, res) =>
-  paymentController.confirmPaymentIntent(req, res),
+router.post(
+  '/confirm-payment-intent',
+  auth(Role.CUSTOMER),
+  enforceCustomerOrderingAvailability,
+  (req, res) => paymentController.confirmPaymentIntent(req, res),
 );
 
 export const PaymentRoutes = router;

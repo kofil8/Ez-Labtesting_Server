@@ -1,5 +1,6 @@
 import express from 'express';
 import auth from '../../middlewares/auth';
+import { enforceCustomerOrderingAvailability } from '../../middlewares/enforceCustomerOrderingAvailability';
 import validateRequest from '../../middlewares/validateRequest';
 import { createCheckoutSessionSchema, submitCheckoutSessionSchema } from './checkout.validation';
 import { checkoutController } from './checkout.controller';
@@ -9,6 +10,7 @@ const router = express.Router();
 router.post(
   '/sessions',
   auth(),
+  enforceCustomerOrderingAvailability,
   validateRequest(createCheckoutSessionSchema),
   (req, res, next) => checkoutController.createSession(req, res).catch(next),
 );
@@ -18,6 +20,7 @@ router.get('/sessions/:id', auth(), (req, res, next) => checkoutController.getSe
 router.post(
   '/sessions/:id/submit',
   auth(),
+  enforceCustomerOrderingAvailability,
   validateRequest(submitCheckoutSessionSchema),
   (req, res, next) => checkoutController.submitSession(req, res).catch(next),
 );
