@@ -69,7 +69,12 @@ jobs:
             : "${DEPLOY_BRANCH:?DEPLOY_BRANCH is required}"
             : "${PM2_APP_NAME:?BACKEND_PM2_APP_NAME secret is required}"
 
+            export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:/usr/local/bin:$PATH"
+
             cd "$APP_DIR"
+
+            git reset --hard
+            git clean -fd
 
             PREVIOUS_COMMIT=$(git rev-parse HEAD)
 
@@ -78,8 +83,8 @@ jobs:
               echo "Deployment failed. Rolling back to $PREVIOUS_COMMIT"
 
               git reset --hard "$PREVIOUS_COMMIT"
+              git clean -fd
 
-              corepack enable || true
               yarn install --frozen-lockfile --non-interactive
               yarn prisma:generate
               yarn build
@@ -98,10 +103,9 @@ jobs:
             git fetch --prune origin "$DEPLOY_BRANCH"
             git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
             git reset --hard "origin/$DEPLOY_BRANCH"
+            git clean -fd
 
-            corepack enable || true
             yarn install --frozen-lockfile --non-interactive
-
             yarn prisma:generate
             yarn prisma:migrate:deploy
             yarn build
@@ -125,7 +129,7 @@ jobs:
           server_port: ${{ secrets.SMTP_PORT }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: 'Backend deployed successfully'
+          subject: Backend deployed successfully
           to: ${{ secrets.DEPLOY_NOTIFY_EMAIL }}
           from: ${{ secrets.SMTP_FROM_EMAIL }}
           body: |
@@ -147,7 +151,7 @@ jobs:
           server_port: ${{ secrets.SMTP_PORT }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: 'Backend deploy failed'
+          subject: Backend deploy failed
           to: ${{ secrets.DEPLOY_NOTIFY_EMAIL }}
           from: ${{ secrets.SMTP_FROM_EMAIL }}
           body: |
