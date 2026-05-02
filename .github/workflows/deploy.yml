@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: backend-deploy-main
   cancel-in-progress: true
@@ -14,6 +17,7 @@ jobs:
   verify:
     name: Verify build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -24,12 +28,13 @@ jobs:
         with:
           node-version: 20
           cache: yarn
+          cache-dependency-path: yarn.lock
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: Generate Prisma client
         run: yarn prisma:generate
@@ -41,6 +46,7 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: verify
+    timeout-minutes: 20
 
     steps:
       - name: Deploy over SSH with rollback
@@ -57,19 +63,24 @@ jobs:
           envs: APP_DIR,DEPLOY_BRANCH,PM2_APP_NAME
           script_stop: true
           script: |
-            set -euo pipefail
+            set -eu
+
+            : "${APP_DIR:?BACKEND_APP_DIR secret is required}"
+            : "${DEPLOY_BRANCH:?DEPLOY_BRANCH is required}"
+            : "${PM2_APP_NAME:?BACKEND_PM2_APP_NAME secret is required}"
 
             cd "$APP_DIR"
 
             PREVIOUS_COMMIT=$(git rev-parse HEAD)
 
             rollback() {
+              trap - ERR
               echo "Deployment failed. Rolling back to $PREVIOUS_COMMIT"
 
               git reset --hard "$PREVIOUS_COMMIT"
 
               corepack enable || true
-              yarn install --frozen-lockfile
+              yarn install --frozen-lockfile --non-interactive
               yarn prisma:generate
               yarn build
 
@@ -82,14 +93,14 @@ jobs:
               pm2 save
             }
 
-            trap rollback ERR
+            trap 'rollback' ERR
 
-            git fetch origin "$DEPLOY_BRANCH"
-            git checkout "$DEPLOY_BRANCH"
+            git fetch --prune origin "$DEPLOY_BRANCH"
+            git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
             git reset --hard "origin/$DEPLOY_BRANCH"
 
             corepack enable || true
-            yarn install --frozen-lockfile
+            yarn install --frozen-lockfile --non-interactive
 
             yarn prisma:generate
             yarn prisma:migrate:deploy
@@ -114,7 +125,7 @@ jobs:
           server_port: ${{ secrets.SMTP_PORT }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: '✅ Backend deployed successfully'
+          subject: 'Backend deployed successfully'
           to: ${{ secrets.DEPLOY_NOTIFY_EMAIL }}
           from: ${{ secrets.SMTP_FROM_EMAIL }}
           body: |
@@ -136,7 +147,7 @@ jobs:
           server_port: ${{ secrets.SMTP_PORT }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: '❌ Backend deploy failed'
+          subject: 'Backend deploy failed'
           to: ${{ secrets.DEPLOY_NOTIFY_EMAIL }}
           from: ${{ secrets.SMTP_FROM_EMAIL }}
           body: |

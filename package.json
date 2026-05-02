@@ -6,9 +6,9 @@
   "author": "Ez LabTesting <info@ezlabtesting.com>",
   "license": "MIT",
   "private": true,
-  "packageManager": "yarn@1.22.22",
+  "type": "commonjs",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint . --ext .ts",
@@ -38,7 +38,6 @@
     "@bull-board/ui": "^6.15.0",
     "@prisma/client": "6.8.2",
     "@socket.io/redis-adapter": "^8.3.0",
-    "socket.io-adapter": "^2.5.5",
     "axios": "^1.7.7",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
@@ -67,6 +66,7 @@
     "rate-limit-redis": "^4.3.0",
     "redis": "5.11.0",
     "socket.io": "^4.8.1",
+    "socket.io-adapter": "^2.5.5",
     "speakeasy": "^2.0.0",
     "stripe": "^20.3.0",
     "uuid": "^11.0.2",
@@ -88,12 +88,13 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.30.0",
     "jest": "^30.0.0",
-    "ts-jest": "^29.4.6",
     "prisma": "6.8.2",
+    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.4.5"
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   },
   "repository": "https://github.com/kofil8/Ez-Labtesting_Server.git"
 }

@@ -1,5 +1,5 @@
-import { Gender } from '@prisma/client';
 import z from 'zod';
+import { Gender } from '@prisma/client';
 
 const register = z.object({
   body: z.object({
@@ -60,9 +60,11 @@ const verifyOTP = z.object({
       .email({
         message: 'Invalid email format!',
       }),
-    otp: z.string({
-      required_error: 'OTP is required!',
-    }).regex(/^\d{6}$/, 'OTP must be 6 digits'),
+    otp: z
+      .string({
+        required_error: 'OTP is required!',
+      })
+      .regex(/^\d{6}$/, 'OTP must be 6 digits'),
   }),
 });
 
