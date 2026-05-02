@@ -21,7 +21,7 @@ const app: Application = express();
 const morganFormat = ':method :url :status :response-time ms';
 const allowedOrigins = getAllowedOrigins();
 
-app.set('trust proxy', 1);
+app.set('trust proxy', getTrustProxySetting());
 
 // 🧩 Global middlewares
 app.use(
