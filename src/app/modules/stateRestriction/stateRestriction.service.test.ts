@@ -2,8 +2,23 @@ jest.mock('../../../config/env', () => ({
   env: {
     PUBLIC_IP_LOOKUP_URL_TEMPLATE: 'https://api.ipify.org?format=json',
     PUBLIC_IP_LOOKUP_TIMEOUT_MS: 3000,
+    NODE_ENV: 'test',
+    IP_GEO_PROVIDER: 'ipinfo',
+    IPINFO_TOKEN: 'test-token',
     IP_GEOLOOKUP_URL_TEMPLATE: 'https://ipwho.is/{ip}',
     IP_GEOLOOKUP_TIMEOUT_MS: 3000,
+    IP_GEO_CACHE_TTL_SECONDS: 86400,
+    RESTRICTION_TEST_STATE: '',
+    RESTRICTION_TEST_IP: '',
+    ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE: false,
+  },
+}));
+
+jest.mock('../../../config/redis', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    set: jest.fn(),
   },
 }));
 
@@ -36,6 +51,7 @@ jest.mock('axios', () => ({
 
 import axios from 'axios';
 import { prisma } from '../../../config/db';
+import redisClient from '../../../config/redis';
 import stateRestrictionService from './stateRestriction.service';
 
 const mockedPrisma = prisma as unknown as {
@@ -51,10 +67,17 @@ const mockedAxios = axios as unknown as {
   get: jest.Mock;
 };
 
+const mockedRedis = redisClient as unknown as {
+  get: jest.Mock;
+  set: jest.Mock;
+};
+
 describe('stateRestrictionService location status', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedAxios.get.mockResolvedValue({ data: { ip: null } });
+    mockedRedis.get.mockResolvedValue(null);
+    mockedRedis.set.mockResolvedValue('OK');
     mockedPrisma.laboratory.findUnique.mockImplementation(
       async ({ where }: { where: { id?: string; code?: string } }) => {
         if (where.id === 'lab-cpl' || where.code === 'CPL') {
@@ -103,6 +126,9 @@ describe('stateRestrictionService location status', () => {
     expect(result).toMatchObject({
       detectedStateCode: 'CA',
       effectiveStateCode: 'NY',
+      countryCode: 'US',
+      regionCode: 'CA',
+      regionName: 'California',
       laboratoryRoute: 'ACCESS',
       restrictionType: 'BLOCKED',
       canOrder: false,
@@ -247,7 +273,6 @@ describe('stateRestrictionService location status', () => {
   });
 
   it.each([
-    ['cf-connecting-ip', { 'cf-connecting-ip': '198.51.100.10' }, '198.51.100.10'],
     ['x-real-ip', { 'x-real-ip': '198.51.100.11' }, '198.51.100.11'],
     [
       'first x-forwarded-for value',
@@ -260,6 +285,8 @@ describe('stateRestrictionService location status', () => {
         success: true,
         country_code: 'US',
         region_code: 'TX',
+        region: 'Texas',
+        city: 'Austin',
       },
     });
 
@@ -276,8 +303,12 @@ describe('stateRestrictionService location status', () => {
       detectedStateCode: 'TX',
       effectiveStateCode: 'TX',
       source: 'ip_lookup',
+      countryCode: 'US',
+      regionCode: 'TX',
+      regionName: 'Texas',
+      city: 'Austin',
     });
-    expect(mockedAxios.get).toHaveBeenCalledWith(`https://ipwho.is/${expectedIp}`, {
+    expect(mockedAxios.get).toHaveBeenCalledWith(`https://api.ipinfo.io/lookup/${expectedIp}?token=test-token`, {
       timeout: 3000,
     });
     expect(mockedAxios.get).not.toHaveBeenCalledWith('https://api.ipify.org?format=json', {
@@ -291,6 +322,8 @@ describe('stateRestrictionService location status', () => {
         success: true,
         country_code: 'US',
         region_code: 'FL',
+        region: 'Florida',
+        city: 'Miami',
       },
     });
 
@@ -308,9 +341,44 @@ describe('stateRestrictionService location status', () => {
       detectedStateCode: 'FL',
       effectiveStateCode: 'FL',
       source: 'ip_lookup',
+      countryCode: 'US',
+      regionCode: 'FL',
+      regionName: 'Florida',
+      city: 'Miami',
     });
-    expect(mockedAxios.get).toHaveBeenCalledWith('https://ipwho.is/203.0.113.77', {
+    expect(mockedAxios.get).toHaveBeenCalledWith('https://api.ipinfo.io/lookup/203.0.113.77?token=test-token', {
       timeout: 3000,
     });
+  });
+
+  it('uses cached geo lookup results from Redis', async () => {
+    mockedRedis.get.mockResolvedValue(
+      JSON.stringify({
+        ip: '203.0.113.88',
+        countryCode: 'US',
+        regionCode: 'NY',
+        regionName: 'New York',
+        city: 'New York',
+        source: 'ipinfo',
+      }),
+    );
+
+    const result = await stateRestrictionService.getLocationStatus({
+      req: {
+        headers: {},
+        ip: '203.0.113.88',
+      } as any,
+    });
+
+    expect(result).toMatchObject({
+      detectedStateCode: 'NY',
+      effectiveStateCode: 'NY',
+      countryCode: 'US',
+      regionCode: 'NY',
+      regionName: 'New York',
+      city: 'New York',
+      source: 'ip_lookup',
+    });
+    expect(mockedAxios.get).not.toHaveBeenCalled();
   });
 });

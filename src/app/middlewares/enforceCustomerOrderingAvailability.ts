@@ -1,11 +1,10 @@
-import { Role } from '@prisma/client';
 import { NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
-import ApiError from '../errors/ApiErrors';
 import stateRestrictionService from '../modules/stateRestriction/stateRestriction.service';
+import logger from '../utils/logger';
 
 export const RESTRICTED_ORDERING_MESSAGE =
-  "We're coming soon to this location. Your IP location is currently restricted for online ordering.";
+  'We are coming soon to your area. Ordering is currently unavailable in your state.';
 
 export async function enforceCustomerOrderingAvailability(
   req: Request,
@@ -15,30 +14,36 @@ export async function enforceCustomerOrderingAvailability(
   try {
     const authUser = (req as Request & { user?: { role?: string } }).user;
 
-    if (authUser?.role !== Role.CUSTOMER) {
+    if (!authUser) {
       next();
       return;
     }
 
     const status = await stateRestrictionService.getLocationStatus({ req });
+    const decision = stateRestrictionService.buildRestrictionDecision(status);
+
+    logger.info(
+      JSON.stringify({
+        event: 'restriction_check',
+        ip: status.maskedIp || status.ip || null,
+        stateCode: decision.stateCode || null,
+        route: req.originalUrl || req.path,
+        restricted: decision.restricted,
+      }),
+    );
 
     if (status.canOrder) {
       next();
       return;
     }
 
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      RESTRICTED_ORDERING_MESSAGE,
-      {
-        stateCode: status.effectiveStateCode || status.detectedStateCode,
-        detectedStateCode: status.detectedStateCode,
-        laboratoryRoute: status.laboratoryRoute,
-        restrictionType: status.restrictionType,
-        source: status.source,
-      },
-      'REGION_RESTRICTED',
-    );
+    _res.status(httpStatus.FORBIDDEN).json({
+      success: false,
+      code: 'RESTRICTED_STATE',
+      message: RESTRICTED_ORDERING_MESSAGE,
+      stateCode: decision.stateCode,
+      stateName: decision.stateName,
+    });
   } catch (error) {
     next(error);
   }
