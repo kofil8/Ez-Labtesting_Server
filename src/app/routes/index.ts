@@ -19,6 +19,7 @@ import { TemplatesRoutes } from '../modules/templates/templates.routes';
 import { UsersRouters } from '../modules/users/users.route';
 import { CheckoutRoutes } from '../modules/checkout/checkout.route';
 import { LabCenterRoutes } from '../modules/lab-centers/lab-centers.route';
+import LocationRoutes from '../modules/location/location.route';
 import { TestsRouters } from '../modules/tests-catalog/tests.route';
 const router = express.Router();
 
@@ -74,6 +75,10 @@ const moduleRoutes = [
   {
     path: '/state-restrictions',
     route: StateRestrictionRoutes,
+  },
+  {
+    path: '/location',
+    route: LocationRoutes,
   },
   {
     path: '/panels',

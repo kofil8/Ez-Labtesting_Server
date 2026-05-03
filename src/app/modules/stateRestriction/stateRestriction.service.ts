@@ -4,7 +4,9 @@ import { Request } from 'express';
 import httpStatus from 'http-status';
 import { prisma } from '../../../config/db';
 import { env } from '../../../config/env';
+import redisClient from '../../../config/redis';
 import ApiError from '../../errors/ApiErrors';
+import logger from '../../utils/logger';
 
 type StateRestrictionPayload = {
   stateCode?: string;
@@ -27,7 +29,7 @@ type GetRestrictionsQuery = {
   sortOrder?: 'asc' | 'desc';
 };
 
-type LocationStatusSource = 'geo_header' | 'ip_lookup' | 'checkout_state' | 'unknown';
+type LocationStatusSource = 'geo_header' | 'ip_lookup' | 'checkout_state' | 'test_override' | 'unknown';
 
 type EvaluateRestrictionParams = {
   stateCode?: string | null;
@@ -53,6 +55,10 @@ type ResolvedLaboratoryRoute = {
 type LocationStatus = {
   ip: string | null;
   maskedIp: string | null;
+  countryCode: string | null;
+  regionCode: string | null;
+  regionName: string | null;
+  city: string | null;
   detectedStateCode: string | null;
   effectiveStateCode: string | null;
   laboratoryRoute: string | null;
@@ -62,11 +68,83 @@ type LocationStatus = {
   source: LocationStatusSource;
 };
 
+type GeoLookupResult = {
+  ip: string;
+  countryCode: string | null;
+  regionCode: string | null;
+  regionName: string | null;
+  city: string | null;
+  source: 'ipinfo' | 'ipwhois';
+};
+
+export type RestrictionDecision = {
+  restricted: boolean;
+  reason?: string;
+  stateCode?: string;
+  stateName?: string;
+  message: string;
+};
+
 const DEFAULT_LABORATORY_ROUTE = 'ACCESS';
 
 const BLOCKED_REASON = 'Ordering is unavailable in your region.';
 const REQUIRES_PHYSICIAN_REASON =
   'Orders from your region require physician review and are not available online.';
+const RESTRICTED_STATE_MESSAGE =
+  'We are coming soon to your area. Ordering is currently unavailable in your state.';
+const US_STATE_NAMES: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+  DC: 'District of Columbia',
+};
 
 class StateRestrictionService {
   private parsePositiveInt(value: number | string | undefined, fallback: number) {
@@ -123,8 +201,23 @@ class StateRestrictionService {
     return 'Available for online ordering.';
   }
 
+  private normalizeIp(ip: string | null | undefined) {
+    const trimmed = ip?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const withoutPort = trimmed.match(/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/)
+      ? trimmed.replace(/:\d+$/, '')
+      : trimmed;
+
+    return withoutPort.toLowerCase().startsWith('::ffff:')
+      ? withoutPort.slice('::ffff:'.length)
+      : withoutPort;
+  }
+
   private isPrivateOrLocalIp(ip: string) {
-    const normalized = ip.trim().toLowerCase();
+    const normalized = this.normalizeIp(ip)?.toLowerCase() || '';
 
     if (
       !normalized ||
@@ -133,6 +226,7 @@ class StateRestrictionService {
       normalized.startsWith('127.') ||
       normalized.startsWith('10.') ||
       normalized.startsWith('192.168.') ||
+      normalized.startsWith('169.254.') ||
       normalized.startsWith('fc') ||
       normalized.startsWith('fd')
     ) {
@@ -180,35 +274,41 @@ class StateRestrictionService {
   }
 
   resolveClientIp(req: Request) {
-    const headerCandidates = [
-      req.headers['cf-connecting-ip'],
-      req.headers['x-vercel-forwarded-for'],
-      req.headers['x-real-ip'],
-      req.headers['x-forwarded-for'],
-    ];
+    const trustedProxyIp = this.normalizeIp(req.ip);
+    if (trustedProxyIp && !this.isPrivateOrLocalIp(trustedProxyIp)) {
+      return trustedProxyIp;
+    }
 
+    const remoteAddress = this.normalizeIp(req.socket?.remoteAddress);
+    const canUseProxyFallback = Boolean(
+      trustedProxyIp ||
+        (remoteAddress && this.isPrivateOrLocalIp(remoteAddress)) ||
+        process.env.NODE_ENV === 'test',
+    );
+
+    if (!canUseProxyFallback) {
+      return trustedProxyIp;
+    }
+
+    const headerCandidates = [req.headers['x-forwarded-for'], req.headers['x-real-ip']];
     for (const candidate of headerCandidates) {
       const rawValue = Array.isArray(candidate) ? candidate[0] : candidate;
-      const ip = rawValue?.split(',')[0]?.trim();
+      const ip = this.normalizeIp(rawValue?.split(',')[0]);
 
       if (ip) {
         return ip;
       }
     }
 
-    if (typeof req.ip === 'string' && req.ip.trim()) {
-      return req.ip.trim();
-    }
-
-    return req.ip || null;
-  }
-
-  private normalizeIp(ip: string | null | undefined) {
-    const normalized = ip?.trim();
-    return normalized ? normalized : null;
+    return trustedProxyIp;
   }
 
   async resolvePublicIp(req: Request, explicitPublicIp?: string | null) {
+    const overrideIp = this.getRestrictionTestIp();
+    if (overrideIp) {
+      return overrideIp;
+    }
+
     const normalizedExplicitIp = this.normalizeIp(explicitPublicIp);
     if (normalizedExplicitIp && !this.isPrivateOrLocalIp(normalizedExplicitIp)) {
       return normalizedExplicitIp;
@@ -220,6 +320,32 @@ class StateRestrictionService {
     }
 
     return null;
+  }
+
+  private getRestrictionTestState() {
+    const stateCode = this.sanitizeStateCode(env.RESTRICTION_TEST_STATE);
+    if (!stateCode) {
+      return null;
+    }
+
+    if (env.NODE_ENV === 'production' && !env.ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE) {
+      return null;
+    }
+
+    return stateCode;
+  }
+
+  private getRestrictionTestIp() {
+    const ip = this.normalizeIp(env.RESTRICTION_TEST_IP);
+    if (!ip) {
+      return null;
+    }
+
+    if (env.NODE_ENV === 'production' && !env.ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE) {
+      return null;
+    }
+
+    return ip;
   }
 
   resolveStateFromGeoHeaders(req: Request) {
@@ -255,12 +381,85 @@ class StateRestrictionService {
     return null;
   }
 
-  async lookupStateFromIp(ip: string | null) {
-    if (!ip || this.isPrivateOrLocalIp(ip)) {
+  private getGeoCacheKey(ip: string) {
+    return `geoip:${ip}`;
+  }
+
+  private async readGeoCache(ip: string): Promise<GeoLookupResult | null> {
+    try {
+      const cached = await redisClient.get(this.getGeoCacheKey(ip));
+      if (!cached) {
+        return null;
+      }
+
+      return JSON.parse(cached) as GeoLookupResult;
+    } catch (error) {
+      logger.warn(
+        JSON.stringify({
+          event: 'geoip_cache_read_failed',
+          ip: this.maskIp(ip),
+          error: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
       return null;
     }
+  }
 
+  private async writeGeoCache(result: GeoLookupResult) {
     try {
+      await redisClient.set(
+        this.getGeoCacheKey(result.ip),
+        JSON.stringify(result),
+        'EX',
+        env.IP_GEO_CACHE_TTL_SECONDS,
+      );
+    } catch (error) {
+      logger.warn(
+        JSON.stringify({
+          event: 'geoip_cache_write_failed',
+          ip: this.maskIp(result.ip),
+          error: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
+    }
+  }
+
+  private buildIpinfoUrl(ip: string) {
+    const targetUrl = new URL(`https://api.ipinfo.io/lookup/${encodeURIComponent(ip)}`);
+    if (env.IPINFO_TOKEN) {
+      targetUrl.searchParams.set('token', env.IPINFO_TOKEN);
+    }
+    return targetUrl.toString();
+  }
+
+  private async requestGeoLookup(ip: string): Promise<GeoLookupResult | null> {
+    try {
+      if (env.IP_GEO_PROVIDER === 'ipinfo') {
+        if (!env.IPINFO_TOKEN) {
+          return null;
+        }
+
+        const response = await axios.get(this.buildIpinfoUrl(ip), {
+          timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
+        });
+        const data = response.data as {
+          ip?: string;
+          country_code?: string;
+          region_code?: string;
+          region?: string;
+          city?: string;
+        };
+
+        return {
+          ip: this.normalizeIp(data.ip) || ip,
+          countryCode: data.country_code?.trim().toUpperCase() || null,
+          regionCode: this.sanitizeStateCode(data.region_code),
+          regionName: data.region?.trim() || null,
+          city: data.city?.trim() || null,
+          source: 'ipinfo',
+        };
+      }
+
       const targetUrl = env.IP_GEOLOOKUP_URL_TEMPLATE.replace('{ip}', encodeURIComponent(ip));
       const response = await axios.get(targetUrl, {
         timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
@@ -269,20 +468,52 @@ class StateRestrictionService {
         success?: boolean;
         country_code?: string;
         region_code?: string;
+        region?: string;
+        city?: string;
       };
 
       if (data?.success === false) {
         return null;
       }
 
-      if (data?.country_code?.toUpperCase() !== 'US') {
-        return null;
-      }
-
-      return this.sanitizeStateCode(data.region_code);
+      return {
+        ip,
+        countryCode: data.country_code?.trim().toUpperCase() || null,
+        regionCode: this.sanitizeStateCode(data.region_code),
+        regionName: data.region?.trim() || null,
+        city: data.city?.trim() || null,
+        source: 'ipwhois',
+      };
     } catch {
       return null;
     }
+  }
+
+  async lookupGeoFromIp(ip: string | null): Promise<GeoLookupResult | null> {
+    if (!ip || this.isPrivateOrLocalIp(ip)) {
+      return null;
+    }
+
+    const cached = await this.readGeoCache(ip);
+    if (cached) {
+      return cached;
+    }
+
+    const result = await this.requestGeoLookup(ip);
+    if (result) {
+      await this.writeGeoCache(result);
+    }
+
+    return result;
+  }
+
+  async lookupStateFromIp(ip: string | null) {
+    const geo = await this.lookupGeoFromIp(ip);
+    if (geo?.countryCode !== 'US') {
+      return null;
+    }
+
+    return this.sanitizeStateCode(geo.regionCode);
   }
 
   async resolveEffectiveLaboratoryRoute(params: {
@@ -420,21 +651,46 @@ class StateRestrictionService {
     };
   }
 
+  buildRestrictionDecision(status: LocationStatus): RestrictionDecision {
+    const stateCode = status.effectiveStateCode || status.detectedStateCode || undefined;
+
+    if (!status.canOrder) {
+      return {
+        restricted: true,
+        reason: status.reason || undefined,
+        stateCode,
+        stateName: stateCode ? US_STATE_NAMES[stateCode] || stateCode : undefined,
+        message: RESTRICTED_STATE_MESSAGE,
+      };
+    }
+
+    return {
+      restricted: false,
+      stateCode,
+      stateName: stateCode ? US_STATE_NAMES[stateCode] || stateCode : undefined,
+      message: 'Available for online ordering.',
+    };
+  }
+
   async getLocationStatus(params: GetLocationStatusParams): Promise<LocationStatus> {
     const ip = await this.resolvePublicIp(params.req, params.publicIp);
     const maskedIp = this.maskIp(ip);
+    const overrideState = this.getRestrictionTestState();
     const detectedFromHeaders = this.resolveStateFromGeoHeaders(params.req);
-    const detectedFromIp = detectedFromHeaders ? null : await this.lookupStateFromIp(ip);
-    const detectedStateCode = detectedFromHeaders || detectedFromIp;
+    const geo = overrideState || detectedFromHeaders ? null : await this.lookupGeoFromIp(ip);
+    const detectedFromIp = geo?.countryCode === 'US' ? this.sanitizeStateCode(geo.regionCode) : null;
+    const detectedStateCode = overrideState || detectedFromHeaders || detectedFromIp;
     const checkoutState = this.sanitizeStateCode(params.checkoutState);
     const effectiveStateCode = checkoutState || detectedStateCode || null;
     const source: LocationStatusSource = checkoutState
       ? 'checkout_state'
-      : detectedFromHeaders
-        ? 'geo_header'
-        : detectedFromIp
-          ? 'ip_lookup'
-          : 'unknown';
+      : overrideState
+        ? 'test_override'
+        : detectedFromHeaders
+          ? 'geo_header'
+          : detectedFromIp
+            ? 'ip_lookup'
+            : 'unknown';
     const effectiveLaboratory = await this.resolveEffectiveLaboratoryRoute({
       laboratoryId: params.laboratoryId,
       laboratoryCode: params.laboratoryCode,
@@ -449,6 +705,12 @@ class StateRestrictionService {
     return {
       ip,
       maskedIp,
+      countryCode: overrideState || detectedFromHeaders ? 'US' : geo?.countryCode || null,
+      regionCode: detectedStateCode || geo?.regionCode || null,
+      regionName: detectedStateCode
+        ? US_STATE_NAMES[detectedStateCode] || geo?.regionName || null
+        : geo?.regionName || null,
+      city: geo?.city || null,
       detectedStateCode: detectedStateCode || null,
       effectiveStateCode,
       laboratoryRoute: effectiveLaboratory.laboratoryRoute,

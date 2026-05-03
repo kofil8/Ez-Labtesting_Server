@@ -51,6 +51,7 @@ router.patch(
 router.delete(
   '/items/:itemId',
   auth(),
+  enforceCustomerOrderingAvailability,
   validateRequest(removeCartItemSchema),
   cartController.removeItem,
 );
@@ -61,7 +62,7 @@ router.post(
   validateRequest(applyPromoCodeSchema),
   cartController.applyPromoCode,
 );
-router.delete('/promo', auth(), cartController.removePromoCode);
+router.delete('/promo', auth(), enforceCustomerOrderingAvailability, cartController.removePromoCode);
 router.post(
   '/validate',
   auth(),

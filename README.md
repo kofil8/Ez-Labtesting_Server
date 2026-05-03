@@ -243,10 +243,16 @@ REQUISITION_SIGNED_URL_TTL_SECONDS=300
 ADMIN_REVIEW_EMAILS=
 
 # IP lookup
+IP_GEO_PROVIDER=ipinfo
+IPINFO_TOKEN=
 IP_GEOLOOKUP_URL_TEMPLATE=https://ipwho.is/{ip}
 IP_GEOLOOKUP_TIMEOUT_MS=3000
+IP_GEO_CACHE_TTL_SECONDS=86400
 PUBLIC_IP_LOOKUP_URL_TEMPLATE=https://api.ipify.org?format=json
 PUBLIC_IP_LOOKUP_TIMEOUT_MS=3000
+RESTRICTION_TEST_STATE=
+RESTRICTION_TEST_IP=
+ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE=false
 
 # Rate limits
 FCM_RATE_LIMIT=10000
@@ -597,6 +603,54 @@ PATCH /:restrictionId
 ```
 
 Only `GET /location-status` is public. Other routes require `ADMIN` or `SUPER_ADMIN`.
+
+Alias status endpoint:
+
+```txt
+GET /api/v1/location/restriction-status
+```
+
+Location restriction checks use the real client IP from Express `req.ip` after `trust proxy` is enabled. Production defaults to `app.set('trust proxy', 1)`, which is compatible with Nginx forwarding `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host`.
+
+Production geolocation should use IPinfo Lookup/Core:
+
+```env
+IP_GEO_PROVIDER=ipinfo
+IPINFO_TOKEN=your_ipinfo_token
+IP_GEO_CACHE_TTL_SECONDS=86400
+```
+
+Geo results are cached in Redis as `geoip:<ip>` for `IP_GEO_CACHE_TTL_SECONDS`. Redis cache errors are logged and do not block ordering checks. Unknown or failed geo lookups fail open.
+
+Safe testing overrides:
+
+```env
+RESTRICTION_TEST_STATE=NY
+RESTRICTION_TEST_IP=198.51.100.10
+ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE=false
+```
+
+Overrides are ignored in production unless `ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE=true` is explicitly set.
+
+Ordering restrictions are enforced on these mutation routes:
+
+```txt
+POST   /api/v1/cart/lock
+POST   /api/v1/cart/sync
+POST   /api/v1/cart/items
+PATCH  /api/v1/cart/items/:itemId
+DELETE /api/v1/cart/items/:itemId
+POST   /api/v1/cart/apply-promo
+DELETE /api/v1/cart/promo
+POST   /api/v1/cart/validate
+POST   /api/v1/checkout/sessions
+POST   /api/v1/checkout/sessions/:id/submit
+POST   /api/v1/orders
+POST   /api/v1/orders/:orderId/confirm-payment
+POST   /api/v1/orders/:orderId/confirm-order
+POST   /api/v1/payment/order-intent
+POST   /api/v1/payment/confirm-payment-intent
+```
 
 ### Cart
 

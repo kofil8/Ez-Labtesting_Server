@@ -88,10 +88,18 @@ const envSchema = z.object({
   ACCESS_RESULTS_SYNC_CRON: z.string().default('0 */4 * * *'),
   REQUISITION_SIGNED_URL_TTL_SECONDS: z.coerce.number().default(300),
   ADMIN_REVIEW_EMAILS: z.string().optional().default(''),
+  IP_GEO_PROVIDER: z.enum(['ipinfo', 'ipwhois']).default('ipinfo'),
+  IPINFO_TOKEN: z.string().optional().default(''),
   IP_GEOLOOKUP_URL_TEMPLATE: z.string().default('https://ipwho.is/{ip}'),
   IP_GEOLOOKUP_TIMEOUT_MS: z.coerce.number().default(3000),
+  IP_GEO_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
   PUBLIC_IP_LOOKUP_URL_TEMPLATE: z.string().default('https://api.ipify.org?format=json'),
   PUBLIC_IP_LOOKUP_TIMEOUT_MS: z.coerce.number().default(3000),
+  RESTRICTION_TEST_STATE: z.string().optional().default(''),
+  RESTRICTION_TEST_IP: z.string().optional().default(''),
+  ALLOW_PRODUCTION_RESTRICTION_TEST_OVERRIDE: z
+    .preprocess((v) => v === 'true' || v === true, z.boolean())
+    .default(false),
 
   // Rate Limiting
   FCM_RATE_LIMIT: z.coerce.number().default(10000),
