@@ -42,6 +42,8 @@ type CartSyncInput = {
   localItems: CartItemInput[];
   clientTimestamp: Date;
   sourceDeviceId?: string;
+  req?: any;
+  checkoutState?: string;
 };
 
 const CART_LOCK_TTL_SECONDS = 15 * 60;
@@ -131,6 +133,8 @@ class CartService {
     labTestId: string;
     quantity: number;
     drawCenterId?: string;
+    req?: any;
+    checkoutState?: string;
   }) {
     await this.assertCartIsMutable(input.userId);
     const candidate = await this.resolveLabTest(input.labTestId);
@@ -145,6 +149,17 @@ class CartService {
 
     if ((candidate.laboratory.code || '').toUpperCase() !== 'ACCESS') {
       throw new ApiError(httpStatus.BAD_REQUEST, 'Only ACCESS laboratory is active');
+    }
+
+    if (input.req) {
+      await stateRestrictionService.assertOrderingAllowed({
+        req: input.req,
+        checkoutState: input.checkoutState,
+        labTestId: candidate.id,
+        testId: candidate.testId,
+        laboratoryId: candidate.laboratoryId,
+        laboratoryCode: candidate.laboratory.code,
+      });
     }
 
     const existingCart = await this.repository.findUserCart(input.userId);
@@ -263,20 +278,14 @@ class CartService {
     }
 
     for (const item of cart.items) {
-      const restrictionStatus = await stateRestrictionService.getLocationStatus({
+      await stateRestrictionService.assertOrderingAllowed({
         req: input.req,
         checkoutState: input.state,
+        labTestId: item.labTestId,
         testId: item.testId,
         laboratoryId: item.laboratoryId,
         laboratoryCode: cart.laboratoryCode || undefined,
       });
-
-      if (!restrictionStatus.canOrder) {
-        throw new ApiError(
-          httpStatus.FORBIDDEN,
-          restrictionStatus.reason || 'This test cannot be ordered for the selected location',
-        );
-      }
     }
 
     return cart;
@@ -306,6 +315,17 @@ class CartService {
           changed = true;
         }
       } else if (serverItem) {
+        if (input.req) {
+          await stateRestrictionService.assertOrderingAllowed({
+            req: input.req,
+            checkoutState: input.checkoutState,
+            labTestId: serverItem.labTestId,
+            testId: serverItem.testId,
+            laboratoryId: serverItem.laboratoryId,
+            laboratoryCode: serverItem.laboratory.code,
+          });
+        }
+
         // Item exists on server - update if client is newer
         const serverUpdatedAt = serverItem.updatedAt.getTime();
         const clientTimestamp = input.clientTimestamp.getTime();
@@ -345,6 +365,17 @@ class CartService {
 
           if ((candidate.laboratory.code || '').toUpperCase() !== 'ACCESS') {
             continue;
+          }
+
+          if (input.req) {
+            await stateRestrictionService.assertOrderingAllowed({
+              req: input.req,
+              checkoutState: input.checkoutState,
+              labTestId: candidate.id,
+              testId: candidate.testId,
+              laboratoryId: candidate.laboratoryId,
+              laboratoryCode: candidate.laboratory.code,
+            });
           }
 
           if (localItem.drawCenterId) {
@@ -390,6 +421,9 @@ class CartService {
           });
           changed = true;
         } catch (error) {
+          if (error instanceof ApiError && error.code === 'RESTRICTED_STATE') {
+            throw error;
+          }
           // Skip items that fail validation
           console.error(`Failed to sync cart item ${localItem.labTestId}:`, error);
           continue;

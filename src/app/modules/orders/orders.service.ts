@@ -23,12 +23,14 @@ import { orderPatientService, UpsertOrderPatientInput } from '../patients/order-
 import { promoCodesService } from '../promo-codes/services/promo-codes.service';
 import { requisitionsService } from '../requisitions/services/requisitions.service';
 import { NotificationService } from '../notifications/notifications.service';
+import stateRestrictionService from '../stateRestriction/stateRestriction.service';
 import { toOrderSummary } from './mappers/order.mapper';
 import { OrdersRepository } from './repositories/orders.repository';
 import { orderStateMachine } from './state-machine/order-state-machine';
 
 type CreateDirectOrderParams = {
   userId: string | null;
+  req?: any;
   labTestId: string;
   accessPayloadJson?: Record<string, unknown>;
   drawCenterId?: string | null;
@@ -144,6 +146,26 @@ class OrderService {
     } catch (error) {
       console.error('[OrderService] Failed to emit tracking update', error);
     }
+  }
+
+  async assertExistingOrderOrderingAllowed(params: { orderId: string; req: any; checkoutState?: string | null }) {
+    const order = await this.repository.findById(params.orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    for (const item of order.orderItems || []) {
+      await stateRestrictionService.assertOrderingAllowed({
+        req: params.req,
+        checkoutState: params.checkoutState || order.patient?.state || undefined,
+        labTestId: item.labTestId,
+        testId: item.testId,
+        laboratoryId: order.laboratoryId,
+        laboratoryCode: order.laboratory?.code,
+      });
+    }
+
+    return order;
   }
 
   private async transitionOrderStatus(
@@ -427,6 +449,23 @@ class OrderService {
     }
 
     const patient = (params.accessPayloadJson?.patient || {}) as Record<string, unknown>;
+    const checkoutState =
+      typeof patient.state === 'string'
+        ? patient.state
+        : typeof patient.addressState === 'string'
+          ? patient.addressState
+          : null;
+
+    if (params.req) {
+      await stateRestrictionService.assertOrderingAllowed({
+        req: params.req,
+        checkoutState,
+        labTestId: labTest.id,
+        testId: labTest.testId,
+        laboratoryId: labTest.laboratoryId,
+        laboratoryCode: labTest.laboratory.code,
+      });
+    }
 
     const createdOrderId = await prisma.$transaction(async (tx) => {
       const subtotal = round2(Number(labTest.salePrice ?? labTest.retailPrice));

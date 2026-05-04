@@ -47,6 +47,15 @@ type GetLocationStatusParams = {
   laboratoryCode?: string | null;
 };
 
+type AssertOrderingAllowedParams = {
+  req: Request;
+  checkoutState?: string | null;
+  labTestId?: string | null;
+  testId?: string | null;
+  laboratoryId?: string | null;
+  laboratoryCode?: string | null;
+};
+
 type ResolvedLaboratoryRoute = {
   laboratoryId: string | null;
   laboratoryRoute: string | null;
@@ -68,13 +77,15 @@ type LocationStatus = {
   source: LocationStatusSource;
 };
 
+type GeoLookupSource = 'ipinfo' | 'ipwhois' | 'ipapi';
+
 type GeoLookupResult = {
   ip: string;
   countryCode: string | null;
   regionCode: string | null;
   regionName: string | null;
   city: string | null;
-  source: 'ipinfo' | 'ipwhois';
+  source: GeoLookupSource;
 };
 
 export type RestrictionDecision = {
@@ -432,61 +443,143 @@ class StateRestrictionService {
     return targetUrl.toString();
   }
 
-  private async requestGeoLookup(ip: string): Promise<GeoLookupResult | null> {
-    try {
-      if (env.IP_GEO_PROVIDER === 'ipinfo') {
-        if (!env.IPINFO_TOKEN) {
-          return null;
-        }
-
-        const response = await axios.get(this.buildIpinfoUrl(ip), {
-          timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
-        });
-        const data = response.data as {
-          ip?: string;
-          country_code?: string;
-          region_code?: string;
-          region?: string;
-          city?: string;
-        };
-
-        return {
-          ip: this.normalizeIp(data.ip) || ip,
-          countryCode: data.country_code?.trim().toUpperCase() || null,
-          regionCode: this.sanitizeStateCode(data.region_code),
-          regionName: data.region?.trim() || null,
-          city: data.city?.trim() || null,
-          source: 'ipinfo',
-        };
-      }
-
-      const targetUrl = env.IP_GEOLOOKUP_URL_TEMPLATE.replace('{ip}', encodeURIComponent(ip));
-      const response = await axios.get(targetUrl, {
-        timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
-      });
-      const data = response.data as {
-        success?: boolean;
-        country_code?: string;
-        region_code?: string;
-        region?: string;
-        city?: string;
-      };
-
-      if (data?.success === false) {
-        return null;
-      }
-
-      return {
-        ip,
-        countryCode: data.country_code?.trim().toUpperCase() || null,
-        regionCode: this.sanitizeStateCode(data.region_code),
-        regionName: data.region?.trim() || null,
-        city: data.city?.trim() || null,
-        source: 'ipwhois',
-      };
-    } catch {
+  private async requestIpinfoLookup(ip: string): Promise<GeoLookupResult | null> {
+    if (!env.IPINFO_TOKEN) {
       return null;
     }
+
+    const response = await axios.get(this.buildIpinfoUrl(ip), {
+      timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
+    });
+    const data = response.data as {
+      ip?: string;
+      country_code?: string;
+      country?: string;
+      region_code?: string;
+      region?: string;
+      city?: string;
+    };
+
+    return {
+      ip: this.normalizeIp(data.ip) || ip,
+      countryCode: (data.country_code || data.country)?.trim().toUpperCase() || null,
+      regionCode: this.sanitizeStateCode(data.region_code),
+      regionName: data.region?.trim() || null,
+      city: data.city?.trim() || null,
+      source: 'ipinfo',
+    };
+  }
+
+  private async requestIpwhoisLookup(ip: string): Promise<GeoLookupResult | null> {
+    const targetUrl = env.IP_GEOLOOKUP_URL_TEMPLATE.replace('{ip}', encodeURIComponent(ip));
+    const response = await axios.get(targetUrl, {
+      timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
+    });
+    const data = response.data as {
+      success?: boolean;
+      country_code?: string;
+      region_code?: string;
+      region?: string;
+      city?: string;
+    };
+
+    if (data?.success === false) {
+      return null;
+    }
+
+    return {
+      ip,
+      countryCode: data.country_code?.trim().toUpperCase() || null,
+      regionCode: this.sanitizeStateCode(data.region_code),
+      regionName: data.region?.trim() || null,
+      city: data.city?.trim() || null,
+      source: 'ipwhois',
+    };
+  }
+
+  private async requestIpApiLookup(ip: string): Promise<GeoLookupResult | null> {
+    const targetUrl = `http://ip-api.com/json/${encodeURIComponent(
+      ip,
+    )}?fields=status,countryCode,region,regionName,city,query`;
+    const response = await axios.get(targetUrl, {
+      timeout: env.IP_GEOLOOKUP_TIMEOUT_MS,
+    });
+    const data = response.data as {
+      status?: string;
+      countryCode?: string;
+      region?: string;
+      regionName?: string;
+      city?: string;
+      query?: string;
+    };
+
+    if (data?.status && data.status !== 'success') {
+      return null;
+    }
+
+    return {
+      ip: this.normalizeIp(data.query) || ip,
+      countryCode: data.countryCode?.trim().toUpperCase() || null,
+      regionCode: this.sanitizeStateCode(data.region),
+      regionName: data.regionName?.trim() || null,
+      city: data.city?.trim() || null,
+      source: 'ipapi',
+    };
+  }
+
+  private isUsStateLookupResult(result: GeoLookupResult | null) {
+    return Boolean(result?.countryCode === 'US' && this.sanitizeStateCode(result.regionCode));
+  }
+
+  private async requestGeoLookup(ip: string): Promise<GeoLookupResult | null> {
+    const lookupOrder: GeoLookupSource[] =
+      env.IP_GEO_PROVIDER === 'ipwhois'
+        ? ['ipwhois', 'ipinfo', 'ipapi']
+        : ['ipinfo', 'ipwhois', 'ipapi'];
+
+    const attempted = new Set<GeoLookupSource>();
+
+    for (const provider of lookupOrder) {
+      if (attempted.has(provider)) {
+        continue;
+      }
+      attempted.add(provider);
+
+      try {
+        const result =
+          provider === 'ipinfo'
+            ? await this.requestIpinfoLookup(ip)
+            : provider === 'ipwhois'
+              ? await this.requestIpwhoisLookup(ip)
+              : await this.requestIpApiLookup(ip);
+
+        if (!result) {
+          continue;
+        }
+
+        if (this.isUsStateLookupResult(result)) {
+          return {
+            ...result,
+            regionCode: this.sanitizeStateCode(result.regionCode),
+          };
+        }
+
+        if (result.countryCode && result.countryCode !== 'US') {
+          return result;
+        }
+      } catch (error) {
+        logger.warn(
+          JSON.stringify({
+            event: 'geoip_provider_failed',
+            provider,
+            ip: this.maskIp(ip),
+            error: error instanceof Error ? error.message : 'unknown',
+          }),
+        );
+      }
+    }
+
+    return null;
   }
 
   async lookupGeoFromIp(ip: string | null): Promise<GeoLookupResult | null> {
@@ -719,6 +812,85 @@ class StateRestrictionService {
       reason: evaluation.reason,
       source,
     };
+  }
+
+  private async resolveLabTestContext(params: {
+    labTestId?: string | null;
+    testId?: string | null;
+    laboratoryId?: string | null;
+    laboratoryCode?: string | null;
+  }) {
+    if (!params.labTestId) {
+      return {
+        testId: params.testId ?? null,
+        laboratoryId: params.laboratoryId ?? null,
+        laboratoryCode: params.laboratoryCode ?? null,
+      };
+    }
+
+    const labTest = await prisma.labTest.findFirst({
+      where: {
+        OR: [{ id: params.labTestId }, { testId: params.labTestId }],
+        ...(params.laboratoryId ? { laboratoryId: params.laboratoryId } : {}),
+        ...(params.laboratoryCode ? { laboratory: { code: params.laboratoryCode } } : {}),
+      },
+      select: {
+        testId: true,
+        laboratoryId: true,
+        laboratory: {
+          select: {
+            code: true,
+          },
+        },
+      },
+    });
+
+    if (!labTest) {
+      return {
+        testId: params.testId ?? null,
+        laboratoryId: params.laboratoryId ?? null,
+        laboratoryCode: params.laboratoryCode ?? null,
+      };
+    }
+
+    return {
+      testId: params.testId ?? labTest.testId,
+      laboratoryId: params.laboratoryId ?? labTest.laboratoryId,
+      laboratoryCode: params.laboratoryCode ?? labTest.laboratory.code,
+    };
+  }
+
+  async assertOrderingAllowed(params: AssertOrderingAllowedParams) {
+    const context = await this.resolveLabTestContext(params);
+    const status = await this.getLocationStatus({
+      req: params.req,
+      checkoutState: params.checkoutState,
+      testId: context.testId,
+      laboratoryId: context.laboratoryId,
+      laboratoryCode: context.laboratoryCode,
+    });
+
+    if (status.canOrder) {
+      return status;
+    }
+
+    const decision = this.buildRestrictionDecision(status);
+
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      decision.message,
+      {
+        stateCode: decision.stateCode,
+        stateName: decision.stateName,
+        restrictionType: status.restrictionType,
+        reason: decision.reason || status.reason || null,
+        source: status.source,
+        ip: status.ip,
+        maskedIp: status.maskedIp,
+        laboratoryRoute: status.laboratoryRoute,
+      },
+      'RESTRICTED_STATE',
+    );
   }
 
   private async ensureNoDuplicateRestriction(

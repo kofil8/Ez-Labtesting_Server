@@ -55,6 +55,8 @@ export class CheckoutService {
           labTestId: item.labTestId,
           quantity: item.quantity || 1,
           drawCenterId: item.drawCenterId || params.drawCenterId,
+          req: params.req,
+          checkoutState: params.patient.state,
         });
       }
     }

@@ -6,6 +6,7 @@ jest.mock('../modules/stateRestriction/stateRestriction.service', () => ({
   __esModule: true,
   default: {
     getLocationStatus: jest.fn(),
+    assertOrderingAllowed: jest.fn(),
     buildRestrictionDecision: jest.fn((status) => ({
       restricted: status.canOrder === false,
       reason: status.reason || undefined,
@@ -41,6 +42,7 @@ describe('enforceCustomerOrderingAvailability', () => {
 
   beforeEach(() => {
     mockedStateRestrictionService.getLocationStatus.mockReset();
+    mockedStateRestrictionService.assertOrderingAllowed.mockReset();
     response.status.mockClear();
     response.json.mockClear();
   });
@@ -50,13 +52,13 @@ describe('enforceCustomerOrderingAvailability', () => {
 
     await enforceCustomerOrderingAvailability(buildRequest(), response, next);
 
-    expect(mockedStateRestrictionService.getLocationStatus).not.toHaveBeenCalled();
+    expect(mockedStateRestrictionService.assertOrderingAllowed).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith();
   });
 
   it('allows unrestricted customer IP locations', async () => {
     const next = jest.fn();
-    mockedStateRestrictionService.getLocationStatus.mockResolvedValue({
+    mockedStateRestrictionService.assertOrderingAllowed.mockResolvedValue({
       ip: '198.51.100.10',
       maskedIp: '198.xxx.xxx.10',
       countryCode: 'US',
@@ -79,38 +81,18 @@ describe('enforceCustomerOrderingAvailability', () => {
 
   it('blocks restricted customer IP locations with RESTRICTED_STATE response', async () => {
     const next = jest.fn();
-    mockedStateRestrictionService.getLocationStatus.mockResolvedValue({
-      ip: '198.51.100.20',
-      maskedIp: '198.xxx.xxx.20',
-      countryCode: 'US',
-      regionCode: 'NY',
-      regionName: 'New York',
-      city: 'New York',
-      detectedStateCode: 'NY',
-      effectiveStateCode: 'NY',
-      laboratoryRoute: 'ACCESS',
-      restrictionType: 'BLOCKED',
-      canOrder: false,
-      reason: 'Ordering is unavailable in your region.',
-      source: 'ip_lookup',
-    });
+    mockedStateRestrictionService.assertOrderingAllowed.mockRejectedValue(
+      new Error('We are coming soon to your area. Ordering is currently unavailable in your state.'),
+    );
 
     await enforceCustomerOrderingAvailability(buildRequest(Role.CUSTOMER), response, next);
 
-    expect(next).not.toHaveBeenCalled();
-    expect(response.status).toHaveBeenCalledWith(403);
-    expect(response.json).toHaveBeenCalledWith({
-      success: false,
-      code: 'RESTRICTED_STATE',
-      message: 'We are coming soon to your area. Ordering is currently unavailable in your state.',
-      stateCode: 'NY',
-      stateName: 'New York',
-    });
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
   });
 
-  it('reports state names from the restriction decision', async () => {
+  it('logs allowed restriction decisions before continuing', async () => {
     const next = jest.fn();
-    mockedStateRestrictionService.getLocationStatus.mockResolvedValue({
+    mockedStateRestrictionService.assertOrderingAllowed.mockResolvedValue({
       ip: '198.51.100.21',
       maskedIp: '198.xxx.xxx.21',
       countryCode: 'US',
@@ -120,19 +102,19 @@ describe('enforceCustomerOrderingAvailability', () => {
       detectedStateCode: 'MD',
       effectiveStateCode: 'MD',
       laboratoryRoute: 'ACCESS',
-      restrictionType: 'REQUIRES_PHYSICIAN',
-      canOrder: false,
-      reason: 'Orders from your region require physician review and are not available online.',
+      restrictionType: null,
+      canOrder: true,
+      reason: null,
       source: 'ip_lookup',
     });
 
     await enforceCustomerOrderingAvailability(buildRequest(Role.CUSTOMER), response, next);
 
-    expect(response.json).toHaveBeenCalledWith(
+    expect(mockedStateRestrictionService.buildRestrictionDecision).toHaveBeenCalledWith(
       expect.objectContaining({
-        stateCode: 'MD',
-        stateName: 'Maryland',
+        effectiveStateCode: 'MD',
       }),
     );
+    expect(next).toHaveBeenCalledWith();
   });
 });

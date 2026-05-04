@@ -1,7 +1,26 @@
 import { Request, Response } from 'express';
 import httpStatus from 'http-status';
+import ApiError from '../../errors/ApiErrors';
+import { orderService } from '../orders/orders.service';
 import { paymentService } from './payment.service';
 import { confirmPaymentIntentSchema, createPaymentIntentForOrderSchema } from './payment.validation';
+
+const sendPaymentError = (res: Response, error: unknown, fallbackMessage: string) => {
+  if (error instanceof ApiError) {
+    res.status(error.statusCode).json({
+      success: false,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+    });
+    return;
+  }
+
+  res.status(httpStatus.BAD_REQUEST).json({
+    success: false,
+    message: error instanceof Error ? error.message : fallbackMessage,
+  });
+};
 
 export class PaymentController {
   /**
@@ -18,6 +37,11 @@ export class PaymentController {
         return;
       }
 
+      await orderService.assertExistingOrderOrderingAllowed({
+        orderId: validatedData.orderId,
+        req,
+      });
+
       const result = await paymentService.createOrUpdatePaymentIntentForOrder({
         orderId: validatedData.orderId,
         userId,
@@ -26,10 +50,7 @@ export class PaymentController {
       res.status(httpStatus.OK).json({ success: true, data: result });
     } catch (error) {
       console.error('[PaymentController] createPaymentIntentForOrder error:', error);
-      res.status(httpStatus.BAD_REQUEST).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to create payment intent',
-      });
+      sendPaymentError(res, error, 'Failed to create payment intent');
     }
   }
 
@@ -54,13 +75,17 @@ export class PaymentController {
         return;
       }
 
+      if (result?.metadata?.orderId) {
+        await orderService.assertExistingOrderOrderingAllowed({
+          orderId: result.metadata.orderId,
+          req,
+        });
+      }
+
       res.status(httpStatus.OK).json({ success: true, data: result });
     } catch (error) {
       console.error('[PaymentController] confirmPaymentIntent error:', error);
-      res.status(httpStatus.BAD_REQUEST).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to confirm payment',
-      });
+      sendPaymentError(res, error, 'Failed to confirm payment');
     }
   }
 }

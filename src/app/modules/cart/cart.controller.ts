@@ -24,6 +24,7 @@ export const cartController = {
       localItems: items || [],
       clientTimestamp: new Date(clientTimestamp || Date.now()),
       sourceDeviceId: typeof deviceId === 'string' ? deviceId : undefined,
+      req,
     });
 
     sendResponse(res, {
@@ -73,7 +74,7 @@ export const cartController = {
 
   addItem: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
-    const cart = await cartService.addItem({ userId, ...req.body });
+    const cart = await cartService.addItem({ userId, ...req.body, req });
     sendResponse(res, { statusCode: 201, success: true, message: 'Cart item added', data: cart });
   }),
 
@@ -95,7 +96,11 @@ export const cartController = {
 
   applyPromoCode: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
-    const cart = await cartService.getCart(userId, req.body.code);
+    const cart = await cartService.validateCart({
+      userId,
+      req,
+      promoCode: req.body.code,
+    });
     sendResponse(res, {
       statusCode: 200,
       success: true,

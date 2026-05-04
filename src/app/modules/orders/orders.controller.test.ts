@@ -21,6 +21,7 @@ jest.mock('./orders.service', () => ({
     markOrderPaid: jest.fn(),
     getAllOrders: jest.fn(),
     confirmOrderByUser: jest.fn(),
+    assertExistingOrderOrderingAllowed: jest.fn(),
   },
 }));
 
@@ -38,6 +39,7 @@ const createResponse = () => {
 describe('OrderController createOrder', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (orderService.assertExistingOrderOrderingAllowed as jest.Mock).mockResolvedValue({});
   });
 
   it('creates an internal order and returns a payment intent payload', async () => {
@@ -143,6 +145,7 @@ describe('OrderController getOrdersByUserId', () => {
 describe('OrderController confirmPayment', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (orderService.assertExistingOrderOrderingAllowed as jest.Mock).mockResolvedValue({});
   });
 
   it('rejects a payment intent that is not bound to the order', async () => {
