@@ -351,6 +351,84 @@ describe('stateRestrictionService location status', () => {
     });
   });
 
+  it('falls back to ipwhois when ipinfo lookup fails', async () => {
+    mockedAxios.get
+      .mockRejectedValueOnce(new Error('ipinfo unavailable'))
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          country_code: 'US',
+          region_code: 'NY',
+          region: 'New York',
+          city: 'New York City',
+        },
+      });
+
+    const result = await stateRestrictionService.getLocationStatus({
+      req: {
+        headers: {},
+        ip: '127.0.0.1',
+      } as any,
+      publicIp: '169.197.141.249',
+      laboratoryCode: 'ACCESS',
+    });
+
+    expect(result).toMatchObject({
+      detectedStateCode: 'NY',
+      effectiveStateCode: 'NY',
+      countryCode: 'US',
+      regionCode: 'NY',
+      regionName: 'New York',
+      city: 'New York City',
+      source: 'ip_lookup',
+    });
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      2,
+      'https://ipwho.is/169.197.141.249',
+      { timeout: 3000 },
+    );
+  });
+
+  it('falls back to ip-api when ipinfo and ipwhois fail', async () => {
+    mockedAxios.get
+      .mockRejectedValueOnce(new Error('ipinfo unavailable'))
+      .mockRejectedValueOnce(new Error('ipwhois unavailable'))
+      .mockResolvedValueOnce({
+        data: {
+          status: 'success',
+          countryCode: 'US',
+          region: 'NJ',
+          regionName: 'New Jersey',
+          city: 'Newark',
+          query: '203.0.113.90',
+        },
+      });
+
+    const result = await stateRestrictionService.getLocationStatus({
+      req: {
+        headers: {},
+        ip: '127.0.0.1',
+      } as any,
+      publicIp: '203.0.113.90',
+      laboratoryCode: 'ACCESS',
+    });
+
+    expect(result).toMatchObject({
+      detectedStateCode: 'NJ',
+      effectiveStateCode: 'NJ',
+      countryCode: 'US',
+      regionCode: 'NJ',
+      regionName: 'New Jersey',
+      city: 'Newark',
+      source: 'ip_lookup',
+    });
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      3,
+      'http://ip-api.com/json/203.0.113.90?fields=status,countryCode,region,regionName,city,query',
+      { timeout: 3000 },
+    );
+  });
+
   it('uses cached geo lookup results from Redis', async () => {
     mockedRedis.get.mockResolvedValue(
       JSON.stringify({

@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from 'express';
-import httpStatus from 'http-status';
 import stateRestrictionService from '../modules/stateRestriction/stateRestriction.service';
 import logger from '../utils/logger';
 
@@ -14,12 +13,12 @@ export async function enforceCustomerOrderingAvailability(
   try {
     const authUser = (req as Request & { user?: { role?: string } }).user;
 
-    if (!authUser) {
+    if (!authUser || authUser.role !== 'CUSTOMER') {
       next();
       return;
     }
 
-    const status = await stateRestrictionService.getLocationStatus({ req });
+    const status = await stateRestrictionService.assertOrderingAllowed({ req });
     const decision = stateRestrictionService.buildRestrictionDecision(status);
 
     logger.info(
@@ -32,18 +31,7 @@ export async function enforceCustomerOrderingAvailability(
       }),
     );
 
-    if (status.canOrder) {
-      next();
-      return;
-    }
-
-    _res.status(httpStatus.FORBIDDEN).json({
-      success: false,
-      code: 'RESTRICTED_STATE',
-      message: RESTRICTED_ORDERING_MESSAGE,
-      stateCode: decision.stateCode,
-      stateName: decision.stateName,
-    });
+    next();
   } catch (error) {
     next(error);
   }

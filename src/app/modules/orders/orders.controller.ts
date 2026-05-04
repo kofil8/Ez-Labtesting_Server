@@ -4,6 +4,28 @@ import httpStatus from 'http-status';
 import { enqueueLabSubmission } from '../../queues/labSubmission.queue';
 import { paymentService } from '../payment/payment.service';
 import { orderService } from './orders.service';
+import ApiError from '../../errors/ApiErrors';
+
+const sendControllerError = (
+  res: Response,
+  error: unknown,
+  fallbackMessage: string,
+  fallbackStatus = httpStatus.BAD_REQUEST,
+) => {
+  if (error instanceof ApiError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+    });
+  }
+
+  return res.status(fallbackStatus).json({
+    success: false,
+    message: error instanceof Error ? error.message : fallbackMessage,
+  });
+};
 
 const asParamString = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -19,6 +41,7 @@ class OrderController {
       const { labTestId, accessPayloadJson, laboratoryCode, laboratoryId, labCenterId } = req.body;
       const order = await orderService.createOrder({
         userId: authUser.id,
+        req,
         labTestId,
         accessPayloadJson,
         drawCenterId: labCenterId,
@@ -197,6 +220,10 @@ class OrderController {
         return res.status(httpStatus.FORBIDDEN).json({ success: false, message: 'Forbidden' });
       }
 
+      if (!isAdmin) {
+        await orderService.assertExistingOrderOrderingAllowed({ orderId: order.id, req });
+      }
+
       const paymentResult = await paymentService.confirmPaymentIntent(stripePaymentIntentId);
       if (
         paymentResult.metadata?.orderId !== order.id ||
@@ -240,10 +267,7 @@ class OrderController {
         data: { orderId: paid.id, status: paid.orderStatus, paidAt: paid.paidAt },
       });
     } catch (error) {
-      return res.status(httpStatus.BAD_REQUEST).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to confirm payment',
-      });
+      return sendControllerError(res, error, 'Failed to confirm payment');
     }
   }
 
@@ -256,6 +280,10 @@ class OrderController {
         return res.status(httpStatus.FORBIDDEN).json({ success: false, message: 'Forbidden' });
       }
 
+      if (!isAdmin) {
+        await orderService.assertExistingOrderOrderingAllowed({ orderId: order.id, req });
+      }
+
       const confirmed = await orderService.confirmOrderByUser(order.id, authUser.id);
       const queue = await enqueueLabSubmission(order.id);
 
@@ -264,10 +292,7 @@ class OrderController {
         data: { order: confirmed, queue },
       });
     } catch (error) {
-      return res.status(httpStatus.BAD_REQUEST).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to confirm order',
-      });
+      return sendControllerError(res, error, 'Failed to confirm order');
     }
   }
 
