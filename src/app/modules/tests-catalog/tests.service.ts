@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { PaymentStatus, Prisma } from '@prisma/client';
 import httpStatus from 'http-status';
 import { prisma } from '../../../config/db';
 import ApiError from '../../errors/ApiErrors';
@@ -318,14 +318,22 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
   };
 
   if (search && search.trim()) {
-    const searchTerm = search.trim();
-    where.OR = [
-      { name: { contains: searchTerm, mode: 'insensitive' } },
-      { description: { contains: searchTerm, mode: 'insensitive' } },
-      { shortDescription: { contains: searchTerm, mode: 'insensitive' } },
-      { cptCode: { has: searchTerm } },
-      { searchKeywords: { hasSome: [searchTerm] } },
-    ];
+    const keywords = search
+      .trim()
+      .split(/\s+/)
+      .filter((k) => k.length > 0);
+
+    if (keywords.length > 0) {
+      // For each keyword, search across all fields and combine with OR
+      // This allows "cbc lipid a1c physical" to return tests matching ANY of these keywords
+      where.OR = keywords.flatMap((keyword) => [
+        { name: { contains: keyword, mode: 'insensitive' } },
+        { description: { contains: keyword, mode: 'insensitive' } },
+        { shortDescription: { contains: keyword, mode: 'insensitive' } },
+        { cptCode: { has: keyword } },
+        { searchKeywords: { hasSome: [keyword] } },
+      ]);
+    }
   }
 
   if (categoryId) where.categoryId = categoryId;
@@ -353,9 +361,13 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
     }
   }
 
-  const validSortFields = ['name', 'createdAt', 'updatedAt', 'isPopular', 'baseTurnaroundDays'];
+  const validSortFields = ['name', 'createdAt', 'updatedAt', 'isPopular', 'baseTurnaroundDays', 'orderCount'];
   const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
   const order: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+  const orderBy: Prisma.TestOrderByWithRelationInput =
+    sortField === 'orderCount'
+      ? { orderItems: { _count: order } }
+      : { [sortField]: order };
 
   const [tests, total] = await Promise.all([
     prisma.test.findMany({
@@ -411,12 +423,21 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
             },
           },
         },
+        _count: {
+          select: {
+            orderItems: {
+              where: {
+                order: {
+                  paymentStatus: PaymentStatus.SUCCEEDED,
+                },
+              },
+            },
+          },
+        },
       },
       skip,
       take: limit,
-      orderBy: {
-        [sortField]: order,
-      },
+      orderBy,
     }),
     prisma.test.count({ where }),
   ]);
@@ -437,8 +458,11 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
       startingPrice: test.labTests[0]?.retailPrice ?? null,
       startingLab: test.labTests[0]?.laboratory ?? null,
       turnaroundDays: test.labTests[0]?.turnaroundDaysOverride ?? test.baseTurnaroundDays ?? null,
+      totalOrders: test._count.orderItems,
+      soldCount: test._count.orderItems,
       panelComponents: undefined,
       labTests: undefined,
+      _count: undefined,
     };
   });
 

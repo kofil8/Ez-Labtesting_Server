@@ -165,7 +165,7 @@ const getTests = z.object({
       page: z.string().regex(/^\d+$/).transform(Number).optional(),
       limit: z.string().regex(/^\d+$/).transform(Number).optional(),
       sortBy: z
-        .enum(['name', 'createdAt', 'updatedAt', 'isPopular', 'baseTurnaroundDays'])
+        .enum(['name', 'createdAt', 'updatedAt', 'isPopular', 'baseTurnaroundDays', 'orderCount'])
         .optional(),
       sortOrder: z.enum(['asc', 'desc']).optional(),
       search: z.string().optional(),
