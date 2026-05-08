@@ -4,8 +4,8 @@ import ApiError from '../../errors/ApiErrors';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
 import { socketManager } from '../../helpers/socketManager';
-import { AuthServices } from './auth.service';
 import { clearAuthCookies, setAuthCookies } from './auth.constants';
+import { AuthServices } from './auth.service';
 
 // ---------------------------
 // REGISTER USER
@@ -188,6 +188,20 @@ const forgotPassword = catchAsync(async (req, res) => {
 });
 
 // ---------------------------
+// VERIFY RESET PASSWORD OTP
+// ---------------------------
+const verifyResetOTP = catchAsync(async (req, res) => {
+  const { email, otp } = req.body;
+  const result = await AuthServices.verifyResetOTP(email, otp);
+
+  sendResponse(res, {
+    statusCode: 200,
+    message: 'Reset OTP verified successfully',
+    data: result,
+  });
+});
+
+// ---------------------------
 // RESET PASSWORD
 // ---------------------------
 const resetPassword = catchAsync(async (req, res) => {
@@ -210,5 +224,6 @@ export const AuthControllers = {
   logoutUser,
   logoutDevice,
   forgotPassword,
+  verifyResetOTP,
   resetPassword,
 };

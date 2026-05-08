@@ -1,5 +1,5 @@
-import z from 'zod';
 import { Gender } from '@prisma/client';
+import z from 'zod';
 
 const register = z.object({
   body: z.object({
@@ -68,6 +68,53 @@ const verifyOTP = z.object({
   }),
 });
 
+const verifyResetOTP = z.object({
+  body: z.object({
+    email: z
+      .string({
+        required_error: 'Email is required!',
+      })
+      .email({
+        message: 'Invalid email format!',
+      }),
+    otp: z
+      .string({
+        required_error: 'OTP is required!',
+      })
+      .regex(/^\d{6}$/, 'OTP must be 6 digits'),
+  }),
+});
+
+const resetPassword = z.object({
+  body: z.union([
+    z.object({
+      resetToken: z
+        .string({
+          required_error: 'Reset token is required!',
+        })
+        .min(1, 'Reset token is required!'),
+      newPassword: z
+        .string()
+        .min(8, 'Password must be at least 8 characters long')
+        .regex(
+          /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])/,
+          'Password must contain at least one uppercase letter, one number and one special character',
+        ),
+    }),
+    z.object({
+      email: z.string().email({ message: 'Invalid email address' }),
+      otp: z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
+      newPassword: z
+        .string()
+        .min(8, 'Password must be at least 8 characters long')
+        .regex(
+          /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])/,
+          'Password must contain at least one uppercase letter, one number and one special character',
+        ),
+    }),
+  ]),
+});
+
 const loginUser = z.object({
   body: z
     .object({
@@ -107,24 +154,11 @@ const forgotPassword = z.object({
   }),
 });
 
-const resetPassword = z.object({
-  body: z.object({
-    email: z.string().email({ message: 'Invalid email address' }),
-    otp: z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
-    newPassword: z
-      .string()
-      .min(8, 'Password must be at least 8 characters long')
-      .regex(
-        /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])/,
-        'Password must contain at least one uppercase letter, one number and one special character',
-      ),
-  }),
-});
-
 export const authValidation = {
   register,
   resendOTP,
   verifyOTP,
+  verifyResetOTP,
   loginUser,
   logoutUser,
   forgotPassword,

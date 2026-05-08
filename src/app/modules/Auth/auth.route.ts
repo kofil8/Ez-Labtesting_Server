@@ -36,7 +36,12 @@ router.post(
 );
 
 // 👉 Login (No Auth Required)
-router.post('/login', loginLimiter, validateRequest(authValidation.loginUser), AuthControllers.loginUser);
+router.post(
+  '/login',
+  loginLimiter,
+  validateRequest(authValidation.loginUser),
+  AuthControllers.loginUser,
+);
 
 // 👉 Refresh Token (No Auth Required)
 router.post('/refreshtoken', refreshLimiter, AuthControllers.refreshToken);
@@ -51,6 +56,14 @@ router.post(
   otpRequestLimiter,
   validateRequest(authValidation.forgotPassword),
   AuthControllers.forgotPassword,
+);
+
+// 👉 Verify reset otp
+router.post(
+  '/verify-reset-otp',
+  otpVerifyLimiter,
+  validateRequest(authValidation.verifyResetOTP),
+  AuthControllers.verifyResetOTP,
 );
 
 // 👉 Reset Password (No Auth Required)

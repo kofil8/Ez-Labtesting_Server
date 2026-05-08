@@ -1,5 +1,5 @@
-import { randomInt } from 'crypto';
 import bcrypt from 'bcrypt';
+import crypto, { randomInt } from 'crypto';
 import httpStatus from 'http-status';
 import { Secret } from 'jsonwebtoken';
 import config from '../../../config';
@@ -9,11 +9,11 @@ import ApiError from '../../errors/ApiErrors';
 import { LoginAttemptService } from '../../helpers/loginAttempts.service';
 import { emailTemplate } from '../../utils/emailtempForOTP';
 import { jwtHelpers } from '../../utils/jwtHelpers';
+import logger from '../../utils/logger';
 import sentEmailUtility from '../../utils/sentEmailUtility';
+import { parseExpiryToSeconds } from '../../utils/tokenExpiry';
 import { welcomeEmailTemplate } from '../../utils/welcomeEmailTemplate';
 import { NotificationService } from '../notifications/notifications.service';
-import logger from '../../utils/logger';
-import { parseExpiryToSeconds } from '../../utils/tokenExpiry';
 import {
   buildLegacyRefreshSessionKey,
   buildRefreshSessionKey,
@@ -60,6 +60,8 @@ const queueOtpEmail = (email: string, subject: string, text: string, html: strin
     console.error('Failed to send OTP email:', error);
   });
 };
+
+const generateResetToken = () => crypto.randomBytes(32).toString('hex');
 
 /* -------------------------------------------------------
    REGISTER USER
@@ -214,7 +216,8 @@ const verifyRegistrationOTP = async (email: string, otp: string) => {
 
   try {
     await NotificationService.sendTemplateNotification(verifiedUser.id, 'ACCOUNT_VERIFIED', {
-      userName: [verifiedUser.firstName, verifiedUser.lastName].filter(Boolean).join(' ') || 'there',
+      userName:
+        [verifiedUser.firstName, verifiedUser.lastName].filter(Boolean).join(' ') || 'there',
       appLink: process.env.FRONTEND_URL || 'https://ezlabtesting.com',
       clickAction: '/dashboard',
     });
@@ -494,14 +497,13 @@ const forgotPassword = async (email: string) => {
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
-    return { message: RESET_CODE_RESPONSE };
+    throw new ApiError(httpStatus.NOT_FOUND, 'There is no account associated with that email');
   }
 
   const otp = generateOtp();
 
   const hashedOtp = await bcrypt.hash(otp, 10);
 
-  // Save in Redis (different key from registration to avoid conflict, or same if flow allows)
   // Using specific key for password reset to be safe
   await redisClient.set(`otp_reset:${email}`, hashedOtp, 'EX', 5 * 60);
 
@@ -515,33 +517,84 @@ const forgotPassword = async (email: string) => {
   return { message: RESET_CODE_RESPONSE };
 };
 
-// Reset Password
-const resetPassword = async (payload: { email: string; otp: string; newPassword: string }) => {
-  const { email, otp, newPassword } = payload;
+// Verify Reset OTP
+const verifyResetOTP = async (email: string, otp: string) => {
+  const hashedOtp = await redisClient.get(`otp_reset:${email}`);
 
-  const [user, hashedOtp] = await Promise.all([
-    prisma.user.findUnique({ where: { email } }),
-    redisClient.get(`otp_reset:${email}`),
-  ]);
-
-  if (!user || !hashedOtp) {
-    throw new ApiError(400, 'Invalid or expired reset code');
+  if (!hashedOtp) {
+    throw new ApiError(400, 'OTP expired or invalid');
   }
 
   const isValid = await bcrypt.compare(otp, hashedOtp);
 
   if (!isValid) {
-    throw new ApiError(400, 'Invalid or expired reset code');
+    throw new ApiError(400, 'Invalid OTP');
+  }
+
+  // Remove the OTP so it cannot be reused
+  await redisClient.del(`otp_reset:${email}`);
+
+  // Create a one-time reset token and store the email mapping in Redis
+  const resetToken = generateResetToken();
+  await redisClient.set(`reset_token:${resetToken}`, email, 'EX', 10 * 60);
+
+  return { resetToken };
+};
+
+// Reset Password
+const resetPassword = async (payload: {
+  email?: string;
+  otp?: string;
+  newPassword: string;
+  resetToken?: string;
+}) => {
+  const { email, otp, newPassword, resetToken } = payload;
+
+  let targetEmail = email;
+  let consumedResetToken: string | null = null;
+
+  if (resetToken) {
+    const storedEmail = await redisClient.get(`reset_token:${resetToken}`);
+    if (!storedEmail) {
+      throw new ApiError(400, 'Invalid or expired reset token');
+    }
+    targetEmail = storedEmail;
+    consumedResetToken = resetToken;
+  } else {
+    if (!email || !otp) {
+      throw new ApiError(400, 'Email and OTP or reset token required');
+    }
+    const hashedOtp = await redisClient.get(`otp_reset:${email}`);
+    if (!hashedOtp) {
+      throw new ApiError(400, 'Invalid or expired reset code');
+    }
+    const isValid = await bcrypt.compare(otp, hashedOtp);
+    if (!isValid) {
+      throw new ApiError(400, 'Invalid or expired reset code');
+    }
+    // consume OTP
+    await redisClient.del(`otp_reset:${email}`);
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: targetEmail } });
+  if (!user) {
+    throw new ApiError(400, 'User not found');
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, Number(config.salt));
 
   await prisma.user.update({
-    where: { email },
+    where: { email: targetEmail },
     data: { password: hashedPassword },
   });
 
-  await redisClient.del(`otp_reset:${email}`);
+  if (consumedResetToken) {
+    await redisClient.del(`reset_token:${consumedResetToken}`);
+  }
+
+  if (email) {
+    await redisClient.del(`otp_reset:${email}`);
+  }
 
   try {
     await NotificationService.sendCustomNotification(
@@ -569,5 +622,6 @@ export const AuthServices = {
   refreshAccessToken,
   logoutUser,
   forgotPassword,
+  verifyResetOTP,
   resetPassword,
 };
