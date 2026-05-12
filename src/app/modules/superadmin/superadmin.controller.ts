@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client';
+import { Role, PromoCodeStatus, PaymentMethodType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import catchAsync from '../../helpers/catchAsync';
@@ -377,7 +377,7 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
   const previousWindowStart = new Date(currentWindowStart);
   previousWindowStart.setDate(previousWindowStart.getDate() - 30);
 
-  const [orders, activeTests, totalUsers, activeAdmins] = await Promise.all([
+  const [orders, activeTests, totalUsers, activeAdmins, activePromoCodes] = await Promise.all([
     prisma.order.findMany({
       include: {
         user: { select: { firstName: true, lastName: true, email: true } },
@@ -394,12 +394,16 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
     prisma.test.count({ where: { isActive: true } }),
     prisma.user.count({ where: { role: Role.CUSTOMER } }),
     prisma.user.count({ where: { role: { in: [Role.ADMIN, Role.SUPER_ADMIN] } } }),
+    prisma.promoCode.count({ where: { status: PromoCodeStatus.ACTIVE } }),
   ]);
 
   const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
   const totalOrders = orders.length;
   const completedOrders = orders.filter((o) => o.orderStatus === 'COMPLETED').length;
   const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const pendingResults = orders.filter((o) =>
+    ['LAB_SUBMISSION_PENDING', 'MANUAL_REVIEW', 'IN_PROCESSING'].includes(o.orderStatus),
+  ).length;
 
   const currentOrders = orders.filter((o) => o.createdAt >= currentWindowStart);
   const previousOrders = orders.filter(
@@ -456,7 +460,22 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
-  const revenueByPaymentMethod = [{ name: 'Online', revenue: totalRevenue }];
+  const revenueByPaymentMethodMap = new Map<string, number>();
+  orders.forEach((order) => {
+    const method =
+      order.paymentMethodType?.toLowerCase() === 'card'
+        ? 'Card'
+        : order.paymentMethodType?.toLowerCase() === 'cash'
+          ? 'Cash'
+          : 'Other';
+    revenueByPaymentMethodMap.set(
+      method,
+      (revenueByPaymentMethodMap.get(method) || 0) + Number(order.total || 0),
+    );
+  });
+  const revenueByPaymentMethod = Array.from(revenueByPaymentMethodMap.entries()).map(
+    ([name, revenue]) => ({ name, revenue }),
+  );
 
   const recentOrders = orders.slice(0, 10).map((order) => ({
     id: order.id,
@@ -477,13 +496,13 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
       stats: {
         totalRevenue,
         totalOrders,
-        pendingResults: 0,
+        pendingResults,
         activeTests,
         averageOrderValue,
         completedOrders,
         revenueGrowth,
         orderGrowth,
-        activePromoCodes: 0,
+        activePromoCodes,
         totalUsers,
         activeAdmins,
       },

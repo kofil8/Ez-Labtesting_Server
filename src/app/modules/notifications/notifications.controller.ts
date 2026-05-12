@@ -2,9 +2,11 @@ import { Request, Response } from 'express';
 import catchAsync from '../../helpers/catchAsync';
 import sendResponse from '../../helpers/sendResponse';
 import { socketManager } from '../../helpers/socketManager';
+import { auditLogService } from '../../services/auditLog.service';
 
 import {
   BroadcastNotificationBody,
+  CustomBroadcastNotificationBody,
   GetNotificationsQuery,
   MarkAsReadParams,
   RegisterTokenInput,
@@ -194,6 +196,63 @@ export const NotificationController = {
       message: 'Broadcast notification queued successfully',
       data: result,
     });
+  }),
+
+  /**
+   * Superadmin: Send custom broadcast notification
+   */
+  sendCustomBroadcast: catchAsync(async (req: Request, res: Response) => {
+    const body: CustomBroadcastNotificationBody = req.body;
+    const { title, body: messageBody, targetRoles, data } = body;
+    const actorId = (req as any).user.id;
+    const actorName = (req as any).user.name || (req as any).user.email;
+
+    try {
+      const result = await NotificationService.sendCustomBulkNotification(
+        title,
+        messageBody,
+        targetRoles,
+        data || {},
+      );
+
+      await auditLogService.record({
+        action: 'NOTIFICATION_CUSTOM_BROADCAST',
+        resource: 'notification',
+        resourceId: 'bulk',
+        actorId,
+        actorName,
+        details: {
+          title,
+          targetRoles,
+          recipientCount: result.totalUsers,
+          queuedCount: result.totalQueued,
+        },
+        status: 'success',
+      });
+
+      sendResponse(res, {
+        statusCode: 200,
+        success: true,
+        message: 'Custom broadcast notification sent successfully',
+        data: result,
+      });
+    } catch (error: any) {
+      await auditLogService.record({
+        action: 'NOTIFICATION_CUSTOM_BROADCAST',
+        resource: 'notification',
+        resourceId: 'bulk',
+        actorId,
+        actorName,
+        details: {
+          title,
+          targetRoles,
+        },
+        status: 'failure',
+        errorMessage: error.message,
+      });
+
+      throw error;
+    }
   }),
 
   /**

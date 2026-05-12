@@ -5,6 +5,7 @@ import {
   PaymentMethodType,
   PaymentStatus,
   Prisma,
+  Role,
   TrackingActorType,
 } from '@prisma/client';
 import httpStatus from 'http-status';
@@ -145,6 +146,24 @@ class OrderService {
       getIO().to(`order:${orderId}`).emit('order:tracking-update', tracking);
     } catch (error) {
       console.error('[OrderService] Failed to emit tracking update', error);
+    }
+  }
+
+  private async emitManualReviewQueueUpdate(orderId: string) {
+    try {
+      const order = await this.repository.findById(orderId);
+      if (!order) {
+        return;
+      }
+
+      await socketManager.emitToRole(Role.SUPER_ADMIN, 'order:manual-review-queue-update', {
+        orderId: order.id,
+        status: order.orderStatus,
+        manualReviewRequired: order.manualReviewRequired,
+        updatedAt: order.updatedAt.toISOString(),
+      });
+    } catch (error) {
+      console.error('[OrderService] Failed to emit manual review queue update', error);
     }
   }
 
@@ -664,6 +683,8 @@ class OrderService {
             ? metadata.reason
             : 'This order requires manual review',
       });
+
+      await this.emitManualReviewQueueUpdate(orderId);
     }
 
     return this.getOrderById(orderId);
@@ -830,6 +851,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.emitManualReviewQueueUpdate(orderId);
     await this.notifyOrder(orderId, 'LAB_SUBMISSION_FAILED', {
       reason: payload.errorMessage || 'Lab submission failed',
     });
@@ -867,6 +889,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.emitManualReviewQueueUpdate(orderId);
     await this.notifyOrder(orderId, 'MANUAL_REVIEW_REQUIRED', {
       reason: note || 'Customer requested manual review',
     });
@@ -901,6 +924,7 @@ class OrderService {
     });
 
     await this.emitTrackingUpdate(orderId);
+    await this.emitManualReviewQueueUpdate(orderId);
     return this.getOrderById(orderId);
   }
 

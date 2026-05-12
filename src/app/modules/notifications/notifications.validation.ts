@@ -78,6 +78,24 @@ export const broadcastNotificationBodySchema = z.object({
   body: z.string().optional(),
 });
 
+// Custom broadcast notification body schema for superadmin
+export const customBroadcastNotificationBodySchema = z.object({
+  title: z.string().min(1, 'title is required'),
+  body: z.string().min(1, 'body is required'),
+  targetRoles: z
+    .array(z.nativeEnum(Role))
+    .min(1, 'at least one target role is required')
+    .refine(
+      (roles) => !roles.includes(Role.SUPER_ADMIN),
+      'SUPER_ADMIN role cannot be targeted',
+    ),
+  data: z.record(z.any()).optional(),
+});
+
+export type CustomBroadcastNotificationBody = z.infer<
+  typeof customBroadcastNotificationBodySchema
+>;
+
 // Mark notification as read socket event
 export const markAsReadSocketEventSchema = z.object({
   id: z.string().uuid(),
@@ -156,3 +174,6 @@ export const validateGetNotifications = validateQuery(getNotificationsQuerySchem
 export const validateMarkAsRead = validateParams(markAsReadParamsSchema);
 export const validateSendNotification = validateBody(sendNotificationBodySchema);
 export const validateBroadcastNotification = validateBody(broadcastNotificationBodySchema);
+export const validateCustomBroadcastNotification = validateBody(
+  customBroadcastNotificationBodySchema,
+);

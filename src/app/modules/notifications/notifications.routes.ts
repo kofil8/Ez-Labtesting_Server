@@ -6,6 +6,7 @@ import { NotificationController } from './notifications.controller';
 import { NotificationService } from './notifications.service';
 import {
   validateBroadcastNotification,
+  validateCustomBroadcastNotification,
   validateGetNotifications,
   validateMarkAsRead,
   validateRegisterToken,
@@ -69,6 +70,14 @@ router.post(
   auth('SUPER_ADMIN', 'ADMIN'),
   validateBroadcastNotification,
   NotificationController.sendBroadcast,
+);
+
+// Send custom broadcast notification (superadmin only)
+router.post(
+  '/admin/custom-broadcast',
+  auth('SUPER_ADMIN'),
+  validateCustomBroadcastNotification,
+  NotificationController.sendCustomBroadcast,
 );
 
 // Get connection statistics

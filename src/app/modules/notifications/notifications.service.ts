@@ -509,6 +509,50 @@ export const NotificationService = {
     };
   },
 
+  async sendCustomBulkNotification(
+    title: string,
+    body: string,
+    targetRoles: Role[],
+    data: NotificationData = {},
+  ) {
+    const users = await prisma.user.findMany({
+      where: { role: { in: targetRoles } },
+      select: { id: true },
+    });
+
+    logger.info(
+      `Sending custom bulk notification to ${users.length} users with roles: ${targetRoles.join(', ')}`,
+    );
+
+    const batchSize = 50;
+    let sentCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < users.length; i += batchSize) {
+      const batch = users.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map((user) =>
+          this.sendCustomNotification(user.id, 'ADMIN_ANNOUNCEMENT', title, body, data),
+        ),
+      );
+
+      sentCount += results.filter((result) => result.status === 'fulfilled').length;
+      failedCount += results.filter((result) => result.status === 'rejected').length;
+
+      results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .forEach((result) => logger.error('Custom bulk notification failed:', result.reason));
+    }
+
+    return {
+      success: true,
+      totalQueued: sentCount,
+      totalUsers: users.length,
+      failedCount,
+      targetRoles,
+    };
+  },
+
   async getNotifications(
     userId: string,
     page: number = 1,

@@ -763,10 +763,48 @@ PATCH  /:id/read
 PATCH  /read/all
 DELETE /:id
 POST   /admin/broadcast
+POST   /admin/custom-broadcast
 GET    /admin/stats
 ```
 
 Admin notification routes require `SUPER_ADMIN` or `ADMIN`.
+
+#### Custom Broadcast Endpoint
+
+`POST /api/v1/notifications/admin/custom-broadcast`
+
+Send a custom notification with user-provided title and body to targeted roles. Superadmin only.
+
+**Request Body:**
+
+```json
+{
+  "title": "System Maintenance Notice",
+  "body": "The system will be down for maintenance tonight.",
+  "targetRoles": ["CUSTOMER", "LAB_PARTNER", "ADMIN"],
+  "data": { "actionUrl": "/dashboard" }
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Custom broadcast notification sent successfully",
+  "data": {
+    "success": true,
+    "totalQueued": 150,
+    "totalUsers": 200,
+    "failedCount": 0,
+    "targetRoles": ["CUSTOMER", "LAB_PARTNER", "ADMIN"]
+  }
+}
+```
+
+- `targetRoles` must contain at least one role and cannot include `SUPER_ADMIN`.
+- Message type is fixed to `ADMIN_ANNOUNCEMENT`.
+- Notifications are delivered via in-app, Socket.IO, and FCM.
 
 ### Templates
 
