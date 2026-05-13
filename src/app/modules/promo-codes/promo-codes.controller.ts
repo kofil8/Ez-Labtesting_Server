@@ -17,6 +17,16 @@ export const promoCodesController = {
     });
   }),
 
+  listActive: catchAsync(async (_req: Request, res: Response) => {
+    const data = await promoCodesService.listActive();
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: 'Active promo codes retrieved',
+      data,
+    });
+  }),
+
   getById: catchAsync(async (req: Request, res: Response) => {
     const data = await promoCodesService.getById(asParamString(req.params.id) as string);
     sendResponse(res, {

@@ -25,9 +25,15 @@ export class PromoCodesService {
       code: promo.code,
       discountType: promo.discountType === DiscountType.PERCENT ? 'percentage' : 'fixed',
       discountValue: Number(promo.discountValue),
-      minPurchaseAmount: promo.minOrder === null || promo.minOrder === undefined ? undefined : Number(promo.minOrder),
-      validFrom: promo.startsAt?.toISOString() || promo.createdAt?.toISOString() || new Date().toISOString(),
-      validUntil: promo.expiresAt?.toISOString() || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      minPurchaseAmount:
+        promo.minOrder === null || promo.minOrder === undefined
+          ? undefined
+          : Number(promo.minOrder),
+      validFrom:
+        promo.startsAt?.toISOString() || promo.createdAt?.toISOString() || new Date().toISOString(),
+      validUntil:
+        promo.expiresAt?.toISOString() ||
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       usageLimit: promo.maxUses ?? undefined,
       usageCount: promo.usedCount,
       enabled: Boolean(promo.isActive) && promo.status !== PromoCodeStatus.ARCHIVED,
@@ -55,7 +61,9 @@ export class PromoCodesService {
       ...(input.discountType !== undefined ? { discountType: input.discountType } : {}),
       ...(input.discountValue !== undefined ? { discountValue: input.discountValue } : {}),
       ...(minOrder !== undefined ? { minOrder } : {}),
-      ...(input.minimumMarginAmount !== undefined ? { minimumMarginAmount: input.minimumMarginAmount } : {}),
+      ...(input.minimumMarginAmount !== undefined
+        ? { minimumMarginAmount: input.minimumMarginAmount }
+        : {}),
       ...(input.perUserLimit !== undefined ? { perUserLimit: input.perUserLimit } : {}),
       ...(maxUses !== undefined ? { maxUses } : {}),
       ...(startsAt !== undefined ? { startsAt } : {}),
@@ -68,6 +76,42 @@ export class PromoCodesService {
   async list() {
     const promos = await this.repository.findMany();
     return promos.map((promo) => this.serialize(promo));
+  }
+
+  async listActive() {
+    const promos = await this.repository.findMany();
+    const now = new Date();
+
+    const activePromos = promos.filter((promo) => {
+      if (!promo.isActive) return false;
+      if (promo.status === PromoCodeStatus.ARCHIVED) return false;
+      if (promo.status && !['ACTIVE'].includes(promo.status)) return false;
+      if (promo.startsAt && promo.startsAt > now) return false;
+      if (promo.expiresAt && promo.expiresAt < now) return false;
+      if (
+        promo.maxUses !== null &&
+        promo.maxUses !== undefined &&
+        promo.usedCount >= promo.maxUses
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    return activePromos.map((promo) => {
+      const serialized = this.serialize(promo);
+      // Strip sensitive admin fields for public consumption
+      return {
+        id: serialized.id,
+        code: serialized.code,
+        discountType: serialized.discountType,
+        discountValue: serialized.discountValue,
+        minPurchaseAmount: serialized.minPurchaseAmount,
+        validFrom: serialized.validFrom,
+        validUntil: serialized.validUntil,
+        enabled: serialized.enabled,
+      };
+    });
   }
 
   async getById(id: string) {

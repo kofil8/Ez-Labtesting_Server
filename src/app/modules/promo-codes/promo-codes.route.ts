@@ -12,10 +12,33 @@ const router = express.Router();
 
 const promoAdminRoles = ['ADMIN', 'SUPER_ADMIN', 'admin', 'super_admin'];
 
+// Public endpoint: returns only currently-active promo codes (no auth required)
+router.get('/active', promoCodesController.listActive);
+
 router.get('/', auth(...promoAdminRoles), promoCodesController.list);
-router.get('/:id', auth(...promoAdminRoles), validateRequest(promoCodeIdSchema), promoCodesController.getById);
-router.post('/', auth(...promoAdminRoles), validateRequest(createPromoCodeSchema), promoCodesController.create);
-router.patch('/:id', auth(...promoAdminRoles), validateRequest(updatePromoCodeSchema), promoCodesController.update);
-router.delete('/:id', auth(...promoAdminRoles), validateRequest(promoCodeIdSchema), promoCodesController.delete);
+router.get(
+  '/:id',
+  auth(...promoAdminRoles),
+  validateRequest(promoCodeIdSchema),
+  promoCodesController.getById,
+);
+router.post(
+  '/',
+  auth(...promoAdminRoles),
+  validateRequest(createPromoCodeSchema),
+  promoCodesController.create,
+);
+router.patch(
+  '/:id',
+  auth(...promoAdminRoles),
+  validateRequest(updatePromoCodeSchema),
+  promoCodesController.update,
+);
+router.delete(
+  '/:id',
+  auth(...promoAdminRoles),
+  validateRequest(promoCodeIdSchema),
+  promoCodesController.delete,
+);
 
 export const PromoCodeRoutes = router;
