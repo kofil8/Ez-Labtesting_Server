@@ -38,7 +38,7 @@ router.patch(
 
 // Set temporary password for an admin
 router.post(
-  '/admins/:id/temporary-password',
+  '/admins/:adminId/temporary-password',
   auth(Role.SUPER_ADMIN),
   SuperAdminController.setTemporaryPassword,
 );

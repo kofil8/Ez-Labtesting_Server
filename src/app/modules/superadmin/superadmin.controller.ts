@@ -1,4 +1,4 @@
-import { Role, PromoCodeStatus, PaymentMethodType } from '@prisma/client';
+import { PromoCodeStatus, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import catchAsync from '../../helpers/catchAsync';
@@ -14,6 +14,9 @@ import prisma from '../../../shared/prisma';
 import { webhookEventLedgerService } from '../../services/webhookEventLedger.service';
 
 const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
+const managedAdminRoles: Role[] = [Role.ADMIN, Role.LAB_PARTNER];
+
+const isManagedAdminRole = (role: Role) => managedAdminRoles.includes(role);
 
 const formatMonthLabel = (date: Date) =>
   date.toLocaleString('en-US', { month: 'short', year: '2-digit' });
@@ -33,7 +36,7 @@ export const getAdmins = catchAsync(async (req: Request, res: Response) => {
     prisma.user.findMany({
       where: {
         role: {
-          in: [Role.ADMIN, Role.SUPER_ADMIN],
+          in: managedAdminRoles,
         },
       },
       select: {
@@ -41,6 +44,7 @@ export const getAdmins = catchAsync(async (req: Request, res: Response) => {
         email: true,
         firstName: true,
         lastName: true,
+        phoneNumber: true,
         role: true,
         lastLogin: true,
         status: true,
@@ -54,7 +58,7 @@ export const getAdmins = catchAsync(async (req: Request, res: Response) => {
     prisma.user.count({
       where: {
         role: {
-          in: [Role.ADMIN, Role.SUPER_ADMIN],
+          in: managedAdminRoles,
         },
       },
     }),
@@ -63,7 +67,7 @@ export const getAdmins = catchAsync(async (req: Request, res: Response) => {
   const response: ApiResponse = {
     statusCode: 200,
     success: true,
-    message: 'Admins retrieved successfully',
+    message: 'Admins and Lab_partners retrieved successfully',
     data: {
       admins,
       pagination: {
@@ -89,14 +93,24 @@ export const getAdminById = catchAsync(async (req: Request, res: Response) => {
       email: true,
       firstName: true,
       lastName: true,
+      phoneNumber: true,
       role: true,
       createdAt: true,
       updatedAt: true,
       isVerified: true,
+      status: true,
     },
   });
 
   if (!admin) {
+    return res.status(404).json({
+      statusCode: 404,
+      success: false,
+      message: 'Admin not found',
+    });
+  }
+
+  if (!isManagedAdminRole(admin.role)) {
     return res.status(404).json({
       statusCode: 404,
       success: false,
@@ -116,14 +130,14 @@ export const getAdminById = catchAsync(async (req: Request, res: Response) => {
 
 // Create new admin
 export const createAdmin = catchAsync(async (req: Request, res: Response) => {
-  const { email, firstName, lastName, password, role } = req.body;
+  const { email, firstName, lastName, phoneNumber, password, role } = req.body;
 
   // Validate role
-  if (role !== Role.ADMIN && role !== Role.SUPER_ADMIN) {
+  if (role !== Role.ADMIN && role !== Role.LAB_PARTNER) {
     return res.status(400).json({
       statusCode: 400,
       success: false,
-      message: 'Invalid role. Must be ADMIN or SUPER_ADMIN',
+      message: 'Invalid role. Must be ADMIN or LAB_PARTNER',
     });
   }
 
@@ -149,17 +163,19 @@ export const createAdmin = catchAsync(async (req: Request, res: Response) => {
       email,
       firstName,
       lastName,
+      phoneNumber,
       password: hashedPassword,
       role,
       isVerified: true,
-      phoneNumber: '',
     },
     select: {
       id: true,
       email: true,
       firstName: true,
       lastName: true,
+      phoneNumber: true,
       role: true,
+      status: true,
       createdAt: true,
     },
   });
@@ -177,14 +193,14 @@ export const createAdmin = catchAsync(async (req: Request, res: Response) => {
 // Update admin
 export const updateAdmin = catchAsync(async (req: Request, res: Response) => {
   const id = asParamString(req.params.id);
-  const { email, firstName, lastName, role, isActive } = req.body;
+  const { email, firstName, lastName, phoneNumber, role, status } = req.body;
 
   // Validate role if provided
-  if (role && role !== Role.ADMIN && role !== Role.SUPER_ADMIN) {
+  if (role && role !== Role.ADMIN && role !== Role.LAB_PARTNER) {
     return res.status(400).json({
       statusCode: 400,
       success: false,
-      message: 'Invalid role. Must be ADMIN or SUPER_ADMIN',
+      message: 'Invalid role. Must be ADMIN or LAB_PARTNER',
     });
   }
 
@@ -198,6 +214,14 @@ export const updateAdmin = catchAsync(async (req: Request, res: Response) => {
       statusCode: 404,
       success: false,
       message: 'Admin not found',
+    });
+  }
+
+  if (!isManagedAdminRole(existingAdmin.role)) {
+    return res.status(403).json({
+      statusCode: 403,
+      success: false,
+      message: 'Super admin account cannot be modified',
     });
   }
 
@@ -223,14 +247,16 @@ export const updateAdmin = catchAsync(async (req: Request, res: Response) => {
       ...(email && { email }),
       ...(firstName && { firstName }),
       ...(lastName && { lastName }),
+      ...(phoneNumber && { phoneNumber }),
       ...(role && { role }),
-      ...(typeof isActive === 'boolean' && { isActive }),
+      ...(status && { status }),
     },
     select: {
       id: true,
       email: true,
       firstName: true,
       lastName: true,
+      phoneNumber: true,
       role: true,
       status: true,
       lastLogin: true,
@@ -266,7 +292,7 @@ export const setTemporaryPassword = catchAsync(async (req: Request, res: Respons
   }
 
   // Verify the target is an admin
-  if (admin.role !== Role.ADMIN && admin.role !== Role.SUPER_ADMIN) {
+  if (!isManagedAdminRole(admin.role)) {
     return res.status(400).json({
       statusCode: 400,
       success: false,
@@ -283,7 +309,10 @@ export const setTemporaryPassword = catchAsync(async (req: Request, res: Respons
   // Update admin password
   await prisma.user.update({
     where: { id: adminId },
-    data: { password: hashedPassword },
+    data: {
+      password: hashedPassword,
+      lastPasswordChangedAt: new Date(),
+    },
   });
 
   const response: ApiResponse = {
@@ -293,7 +322,7 @@ export const setTemporaryPassword = catchAsync(async (req: Request, res: Respons
     data: {
       adminId,
       temporaryPassword: tempPassword,
-      note: 'Share this password with the admin. They should change it on first login.',
+      note: 'Share this password securely with the admin. They should change it on first login.',
     },
   };
 
@@ -354,6 +383,14 @@ export const deleteAdmin = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
+  if (!isManagedAdminRole(admin.role)) {
+    return res.status(403).json({
+      statusCode: 403,
+      success: false,
+      message: 'Super admin account cannot be deleted',
+    });
+  }
+
   // Delete admin
   await prisma.user.delete({
     where: { id },
@@ -393,7 +430,7 @@ export const getDashboardSummary = catchAsync(async (_req: Request, res: Respons
     }),
     prisma.test.count({ where: { isActive: true } }),
     prisma.user.count({ where: { role: Role.CUSTOMER } }),
-    prisma.user.count({ where: { role: { in: [Role.ADMIN, Role.SUPER_ADMIN] } } }),
+    prisma.user.count({ where: { role: { in: managedAdminRoles } } }),
     prisma.promoCode.count({ where: { status: PromoCodeStatus.ACTIVE } }),
   ]);
 
@@ -590,41 +627,61 @@ export const updateSystemSetting = catchAsync(async (req: Request, res: Response
 
 // Get audit logs (mock - would need AuditLog model)
 export const getAuditLogs = catchAsync(async (req: Request, res: Response) => {
-  const { limit = 100, offset = 0, adminId, action, resource } = req.query;
+  const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
+  const offset = typeof req.query.offset === 'string' ? Number(req.query.offset) : 0;
+  const adminIdOrName = typeof req.query.adminId === 'string' ? req.query.adminId : undefined;
+  const action = typeof req.query.action === 'string' ? req.query.action : undefined;
+  const resource = typeof req.query.resource === 'string' ? req.query.resource : undefined;
 
-  // Mock audit logs response
-  const auditLogs = [
-    {
-      id: '1',
-      adminId: 'admin1',
-      adminName: 'John Doe',
-      action: 'CREATE',
-      resource: 'User',
-      resourceId: 'user-123',
-      details: 'Created new customer account',
-      timestamp: new Date().toISOString(),
-      ipAddress: '192.168.1.100',
-      status: 'success',
-    },
-    {
-      id: '2',
-      adminId: 'admin2',
-      adminName: 'Jane Smith',
-      action: 'UPDATE',
-      resource: 'Test',
-      resourceId: 'test-456',
-      details: 'Updated test pricing',
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      ipAddress: '192.168.1.101',
-      status: 'success',
-    },
-  ];
+  const where: any = {};
+  if (adminIdOrName) {
+    // support searching by adminId or adminName
+    where.OR = [
+      { adminId: adminIdOrName },
+      { adminName: { contains: adminIdOrName, mode: 'insensitive' } },
+    ];
+  }
+  if (action) where.action = action;
+  if (resource) where.resource = resource;
+
+  const [logs, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.auditLog.count({ where }),
+  ]);
+
+  const mapped = logs.map((l) => ({
+    id: l.id,
+    adminId: l.adminId,
+    adminName: l.adminName,
+    action: l.action,
+    resource: l.resource,
+    resourceId: l.resourceId,
+    details: (() => {
+      try {
+        // details may be stored JSON string
+        const parsed = JSON.parse(l.details);
+        return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+      } catch {
+        return l.details;
+      }
+    })(),
+    timestamp: l.createdAt.toISOString(),
+    ipAddress: l.ipAddress || '',
+    status: (l.status || 'SUCCESS').toLowerCase() === 'success' ? 'success' : 'failed',
+    changesBefore: l.changesBefore,
+    changesAfter: l.changesAfter,
+  }));
 
   const response: ApiResponse = {
     statusCode: 200,
     success: true,
     message: 'Audit logs retrieved successfully',
-    data: auditLogs,
+    data: { logs: mapped, total },
   };
 
   res.json(response);
@@ -634,27 +691,40 @@ export const getAuditLogs = catchAsync(async (req: Request, res: Response) => {
 export const getAuditLogById = catchAsync(async (req: Request, res: Response) => {
   const id = asParamString(req.params.id);
 
-  // Mock audit log response
-  const auditLog = {
-    id,
-    adminId: 'admin1',
-    adminName: 'John Doe',
-    action: 'CREATE',
-    resource: 'User',
-    resourceId: 'user-123',
-    details: 'Created new customer account',
-    timestamp: new Date().toISOString(),
-    ipAddress: '192.168.1.100',
-    status: 'success',
-    changesBefore: null,
-    changesAfter: null,
+  const record = await prisma.auditLog.findUnique({ where: { id } });
+  if (!record) {
+    return res
+      .status(404)
+      .json({ statusCode: 404, success: false, message: 'Audit log not found' });
+  }
+
+  const data = {
+    id: record.id,
+    adminId: record.adminId,
+    adminName: record.adminName,
+    action: record.action,
+    resource: record.resource,
+    resourceId: record.resourceId,
+    details: (() => {
+      try {
+        const parsed = JSON.parse(record.details);
+        return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+      } catch {
+        return record.details;
+      }
+    })(),
+    timestamp: record.createdAt.toISOString(),
+    ipAddress: record.ipAddress,
+    status: (record.status || 'SUCCESS').toLowerCase() === 'success' ? 'success' : 'failed',
+    changesBefore: record.changesBefore,
+    changesAfter: record.changesAfter,
   };
 
   const response: ApiResponse = {
     statusCode: 200,
     success: true,
     message: 'Audit log retrieved successfully',
-    data: auditLog,
+    data,
   };
 
   res.json(response);
