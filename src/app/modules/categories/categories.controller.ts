@@ -59,9 +59,9 @@ class CategoryController {
    */
   async createCategory(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, slug } = req.body;
+      const { name, slug, isActive } = req.body;
 
-      const category = await categoryService.createCategory({ name, slug });
+      const category = await categoryService.createCategory({ name, slug, isActive });
 
       res.status(httpStatus.CREATED).json({
         success: true,
@@ -79,9 +79,13 @@ class CategoryController {
   async updateCategory(req: Request, res: Response, next: NextFunction) {
     try {
       const categoryId = asParamString(req.params.categoryId);
-      const { name } = req.body;
+      const { name, slug, isActive } = req.body;
 
-      const category = await categoryService.updateCategory(categoryId, { name });
+      const category = await categoryService.updateCategory(categoryId, {
+        name,
+        slug,
+        isActive,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,

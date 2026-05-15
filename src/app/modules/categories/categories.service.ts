@@ -148,7 +148,7 @@ class CategoryService {
   /**
    * Create a new category
    */
-  async createCategory(data: { name: string; slug: string }) {
+  async createCategory(data: { name: string; slug: string; isActive?: boolean }) {
     const normalizedName = this.normalizeName(data.name);
 
     if (!normalizedName) {
@@ -184,7 +184,11 @@ class CategoryService {
     let category;
     try {
       category = await prisma.testCategory.create({
-        data: { name: normalizedName, slug: uniqueSlug },
+        data: {
+          name: normalizedName,
+          slug: uniqueSlug,
+          ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+        },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -200,13 +204,88 @@ class CategoryService {
   /**
    * Update a category
    */
-  async updateCategory(categoryId: string, data: { name?: string }) {
-    const category = await prisma.testCategory.update({
+  async updateCategory(
+    categoryId: string,
+    data: { name?: string; slug?: string; isActive?: boolean },
+  ) {
+    const existingCategory = await prisma.testCategory.findUnique({
       where: { id: categoryId },
-      data,
+      select: { id: true },
     });
 
-    return category;
+    if (!existingCategory) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Category not found');
+    }
+
+    const nextData: {
+      name?: string;
+      slug?: string;
+      isActive?: boolean;
+    } = {};
+
+    if (data.name !== undefined) {
+      const normalizedName = this.normalizeName(data.name);
+      if (!normalizedName) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Category name is required');
+      }
+
+      const duplicateName = await prisma.testCategory.findFirst({
+        where: {
+          id: { not: categoryId },
+          name: {
+            equals: normalizedName,
+            mode: 'insensitive',
+          },
+        },
+        select: { id: true },
+      });
+
+      if (duplicateName) {
+        throw new ApiError(httpStatus.CONFLICT, 'Category with this name already exists');
+      }
+
+      nextData.name = normalizedName;
+    }
+
+    if (data.slug !== undefined) {
+      const normalizedSlugInput = this.normalizeName(data.slug);
+      const normalizedSlug = this.toSlug(normalizedSlugInput);
+
+      if (!normalizedSlug) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Category slug is invalid');
+      }
+
+      const duplicateSlug = await prisma.testCategory.findFirst({
+        where: {
+          id: { not: categoryId },
+          slug: normalizedSlug,
+        },
+        select: { id: true },
+      });
+
+      if (duplicateSlug) {
+        throw new ApiError(httpStatus.CONFLICT, 'Category with this slug already exists');
+      }
+
+      nextData.slug = normalizedSlug;
+    }
+
+    if (data.isActive !== undefined) {
+      nextData.isActive = data.isActive;
+    }
+
+    try {
+      return await prisma.testCategory.update({
+        where: { id: categoryId },
+        data: nextData,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ApiError(httpStatus.CONFLICT, 'Category already exists');
+      }
+
+      throw error;
+    }
   }
 
   /**

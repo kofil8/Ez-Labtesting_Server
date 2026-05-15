@@ -41,6 +41,7 @@ interface IGetTestsQuery {
   isPopular?: boolean;
   minAge?: number;
   maxAge?: number;
+  isActive?: 'true' | 'false' | 'all' | boolean;
 }
 
 function sanitizeTestImageUrl(url: string | null | undefined): string | null {
@@ -313,9 +314,18 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
   const maxAge = parseIntegerQuery(query.maxAge);
   const skip = (page - 1) * limit;
 
-  const where: Prisma.TestWhereInput = {
-    isActive: true,
-  };
+  // isActive filter: default to true. Allow explicit `false` or `all` overrides.
+  const isActiveRaw = query.isActive;
+  const where: Prisma.TestWhereInput = {};
+  if (isActiveRaw === 'all') {
+    // no filter on isActive
+  } else if (isActiveRaw === 'false' || isActiveRaw === false) {
+    where.isActive = false;
+  } else if (isActiveRaw === 'true' || isActiveRaw === true || isActiveRaw === undefined) {
+    where.isActive = true;
+  } else {
+    where.isActive = true;
+  }
 
   if (search && search.trim()) {
     const keywords = search
@@ -361,13 +371,18 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
     }
   }
 
-  const validSortFields = ['name', 'createdAt', 'updatedAt', 'isPopular', 'baseTurnaroundDays', 'orderCount'];
+  const validSortFields = [
+    'name',
+    'createdAt',
+    'updatedAt',
+    'isPopular',
+    'baseTurnaroundDays',
+    'orderCount',
+  ];
   const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
   const order: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
   const orderBy: Prisma.TestOrderByWithRelationInput =
-    sortField === 'orderCount'
-      ? { orderItems: { _count: order } }
-      : { [sortField]: order };
+    sortField === 'orderCount' ? { orderItems: { _count: order } } : { [sortField]: order };
 
   const [tests, total] = await Promise.all([
     prisma.test.findMany({
@@ -378,9 +393,16 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
         name: true,
         testImageUrl: true,
         categoryId: true,
+        description: true,
         shortDescription: true,
+        specimenType: true,
         baseTurnaroundDays: true,
         cptCode: true,
+        preparationInstructions: true,
+        internalNotes: true,
+        seoTitle: true,
+        seoDescription: true,
+        searchKeywords: true,
         isActive: true,
         isPopular: true,
         isPanel: true,

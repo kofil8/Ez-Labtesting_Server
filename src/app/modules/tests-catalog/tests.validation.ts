@@ -184,6 +184,7 @@ const getTests = z.object({
         .optional(),
       minAge: z.string().regex(/^\d+$/).transform(Number).optional(),
       maxAge: z.string().regex(/^\d+$/).transform(Number).optional(),
+      isActive: z.enum(['true', 'false', 'all']).optional(),
     })
     .strict(),
 });

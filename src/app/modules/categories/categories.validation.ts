@@ -15,12 +15,15 @@ export const createCategorySchema = z.object({
   body: z.object({
     name: z.string().min(1, 'Name is required').max(100),
     slug: z.string().min(1, 'Slug cannot be empty').max(120),
+    isActive: z.boolean().optional(),
   }),
 });
 
 export const updateCategorySchema = z.object({
   body: z.object({
     name: z.string().min(1).max(100).optional(),
+    slug: z.string().min(1).max(120).optional(),
+    isActive: z.boolean().optional(),
   }),
   params: z.object({
     categoryId: z.string().uuid('Invalid category ID'),
