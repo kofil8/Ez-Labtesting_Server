@@ -1,6 +1,9 @@
 import http from 'http';
 import app from './app';
-import { startNotificationCleanup, stopNotificationCleanup } from './app/helpers/notificationCleanup';
+import {
+  startNotificationCleanup,
+  stopNotificationCleanup,
+} from './app/helpers/notificationCleanup';
 import { initializeQueueProcessors } from './app/helpers/notificationQueue.processor';
 import auth from './app/middlewares/auth';
 import { initNotificationSocket } from './app/modules/notifications/notifications.socket';
@@ -15,6 +18,7 @@ import { connectDatabases, disconnectDatabases } from './config/db';
 import { closeQueues, initializeQueues } from './config/queue';
 import { closeSocketIO, initializeSocketIO } from './config/socket';
 import { getFirebaseAdmin } from './lib/firebaseAdmin';
+import { initSupportSocket } from './app/modules/support/support.socket';
 
 let server: http.Server | null = null;
 const PORT = Number(config.port) || 9001;
@@ -39,6 +43,7 @@ async function startServer() {
 
     initNotificationSocket(io);
     initOrderTrackingSocket(io);
+    initSupportSocket(io);
 
     server.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}/health`);

@@ -26,6 +26,7 @@ type UpdatePanelPayload = {
   startsAt?: string | null;
   endsAt?: string | null;
   testIds?: string[] | string;
+  removePanelImage?: boolean | string;
 };
 
 type GetPanelsQuery = {
@@ -318,6 +319,12 @@ const updatePanelInDB = async (
     throw new ApiError(httpStatus.NOT_FOUND, 'Panel not found');
   }
 
+  if (normalizeBoolean(payload.removePanelImage, false) && existingPanel.testImageUrl && !file) {
+    try {
+      await deleteFile(existingPanel.testImageUrl);
+    } catch {}
+  }
+
   if (file && existingPanel.testImageUrl) {
     try {
       await deleteFile(existingPanel.testImageUrl);
@@ -338,6 +345,7 @@ const updatePanelInDB = async (
         ...(payload.isActive !== undefined
           ? { isActive: normalizeBoolean(payload.isActive, true) ?? true }
           : {}),
+        ...(normalizeBoolean(payload.removePanelImage, false) && !file ? { testImageUrl: null } : {}),
         ...(file ? { testImageUrl: (file as any).location } : {}),
       },
     });

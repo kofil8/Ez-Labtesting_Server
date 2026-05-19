@@ -71,6 +71,7 @@ const baseBodyObjectSchema = z.object({
   maxAge: numberFromStringInt.optional(),
   isActive: booleanFromString.optional(),
   isPopular: booleanFromString.optional(),
+  removeTestImage: booleanFromString.optional(),
   componentTestIds: stringArrayFromUnknown
     .pipe(z.array(z.string().uuid('Each componentTestId must be a valid UUID')))
     .optional(),

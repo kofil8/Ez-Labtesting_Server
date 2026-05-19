@@ -18,12 +18,12 @@ import { socketManager } from '../../helpers/socketManager';
 import { auditLogService } from '../../services/auditLog.service';
 import { cartService } from '../cart/cart.service';
 import { CartRepository } from '../cart/repositories/cart.repository';
-import { labProviderRegistryService } from '../lab-integration/services/lab-provider-registry.service';
+import { NotificationService } from '../notifications/notifications.service';
 import { orderTrackingService } from '../order-tracking/services/order-tracking.service';
-import { orderPatientService, UpsertOrderPatientInput } from '../patients/order-patient/services/order-patient.service';
+import { UpsertOrderPatientInput } from '../patients/order-patient/services/order-patient.service';
+import { stripePaymentGateway } from '../payment/services/stripe-payment-gateway.service';
 import { promoCodesService } from '../promo-codes/services/promo-codes.service';
 import { requisitionsService } from '../requisitions/services/requisitions.service';
-import { NotificationService } from '../notifications/notifications.service';
 import stateRestrictionService from '../stateRestriction/stateRestriction.service';
 import { toOrderSummary } from './mappers/order.mapper';
 import { OrdersRepository } from './repositories/orders.repository';
@@ -37,6 +37,7 @@ type CreateDirectOrderParams = {
   drawCenterId?: string | null;
   laboratoryId?: string | null;
   laboratoryCode?: string | null;
+  promoCode?: string | null;
 };
 
 type CreateOrderFromCartParams = {
@@ -77,7 +78,9 @@ const buildOrderNumber = () => {
 };
 
 const toJson = (value: unknown) =>
-  value === undefined ? Prisma.JsonNull : (JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue);
+  value === undefined
+    ? Prisma.JsonNull
+    : (JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue);
 
 const toNullableJsonValue = (value: Prisma.InputJsonValue | null | undefined) =>
   value === undefined || value === null ? Prisma.JsonNull : value;
@@ -86,8 +89,13 @@ class OrderService {
   private readonly repository = new OrdersRepository();
   private readonly cartRepository = new CartRepository();
 
-  private buildOrderNotificationData(order: Awaited<ReturnType<OrderService['getOrderById']>>, extra: Record<string, unknown> = {}) {
-    const patientName = [order.patient?.firstName, order.patient?.lastName].filter(Boolean).join(' ');
+  private buildOrderNotificationData(
+    order: Awaited<ReturnType<OrderService['getOrderById']>>,
+    extra: Record<string, unknown> = {},
+  ) {
+    const patientName = [order.patient?.firstName, order.patient?.lastName]
+      .filter(Boolean)
+      .join(' ');
 
     return {
       orderId: order.orderNumber || order.id,
@@ -95,7 +103,7 @@ class OrderService {
       userName: patientName || 'there',
       amount: `${Number(order.total).toFixed(2)} ${order.currency}`,
       testCount: String(order.orderItems?.length || 0),
-        clickAction: `/dashboard/customer/results/${order.id}`,
+      clickAction: `/dashboard/customer/results/${order.id}`,
       ...extra,
     };
   }
@@ -108,6 +116,7 @@ class OrderService {
       | 'PAYMENT_FAILED'
       | 'ORDER_CONFIRMED'
       | 'ORDER_IN_PROGRESS'
+      | 'ORDER_CANCELLED'
       | 'REQUISITION_READY'
       | 'LAB_SUBMISSION_FAILED'
       | 'MANUAL_REVIEW_REQUIRED',
@@ -126,6 +135,76 @@ class OrderService {
       );
     } catch (error) {
       console.error(`[OrderService] Failed to send ${type} notification`, error);
+    }
+  }
+
+  private async notifyAdmins(
+    orderId: string,
+    type: 'ORDER_CANCELLED' | 'LAB_SUBMISSION_FAILED' | 'MANUAL_REVIEW_REQUIRED' | 'PAYMENT_FAILED',
+    extra: Record<string, unknown> = {},
+  ) {
+    try {
+      const order = await this.getOrderById(orderId);
+      const admins = await prisma.user.findMany({
+        where: { role: { in: [Role.ADMIN, Role.SUPER_ADMIN] } },
+        select: { id: true },
+      });
+
+      const data = this.buildOrderNotificationData(order, {
+        ...extra,
+        adminAlert: true,
+        userName: 'Admin',
+        clickAction: `/dashboard/admin/orders/${order.id}`,
+      });
+
+      await Promise.allSettled(
+        admins.map((admin) => NotificationService.sendTemplateNotification(admin.id, type, data)),
+      );
+
+      // Realtime fan-out so admin dashboards can react immediately
+      const alertPayload = {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: order.orderStatus,
+        type,
+        reason:
+          (extra.reason as string) ||
+          (order as any).accessErrorMessage ||
+          (order as any).labSubmissionErrorMessage ||
+          null,
+        updatedAt:
+          order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
+      };
+      await socketManager.emitToRole(Role.ADMIN, 'order:admin-alert', alertPayload);
+      await socketManager.emitToRole(Role.SUPER_ADMIN, 'order:admin-alert', alertPayload);
+    } catch (error) {
+      console.error(`[OrderService] Failed to send admin ${type} notification`, error);
+    }
+  }
+
+  private async emitStatusChanged(
+    orderId: string,
+    previousStatus: OrderStatus,
+    nextStatus: OrderStatus,
+    reason?: string | null,
+  ) {
+    try {
+      const order = await this.repository.findById(orderId);
+      const payload = {
+        orderId,
+        previousStatus,
+        status: nextStatus,
+        reason: reason || null,
+        manualReviewRequired: order?.manualReviewRequired || false,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (order?.userId) {
+        socketManager.emitToUser(order.userId, 'order:status-changed', payload);
+      }
+      getIO().to(`order:${orderId}`).emit('order:status-changed', payload);
+    } catch (error) {
+      console.error('[OrderService] Failed to emit status-changed event', error);
     }
   }
 
@@ -167,7 +246,11 @@ class OrderService {
     }
   }
 
-  async assertExistingOrderOrderingAllowed(params: { orderId: string; req: any; checkoutState?: string | null }) {
+  async assertExistingOrderOrderingAllowed(params: {
+    orderId: string;
+    req: any;
+    checkoutState?: string | null;
+  }) {
     const order = await this.repository.findById(params.orderId);
     if (!order) {
       throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
@@ -243,6 +326,12 @@ class OrderService {
       },
       db,
     );
+
+    // Emit status-changed only when not inside a caller-provided transaction to
+    // avoid broadcasting before the outer tx commits.
+    if (current.orderStatus !== nextStatus && !params?.tx) {
+      void this.emitStatusChanged(orderId, current.orderStatus, nextStatus, params?.message);
+    }
 
     return updated;
   }
@@ -349,7 +438,8 @@ class OrderService {
           },
           orderItems: {
             create: cartItems.map((item) => {
-              const itemDiscount = itemDiscounts.find((entry) => entry.itemId === item.id)?.discountAmount || 0;
+              const itemDiscount =
+                itemDiscounts.find((entry) => entry.itemId === item.id)?.discountAmount || 0;
               const lineDiscountPerUnit = round2(itemDiscount / item.quantity);
 
               return {
@@ -362,7 +452,9 @@ class OrderService {
                 baseRetailPrice: item.baseRetailPrice,
                 effectiveUnitPrice: item.effectiveUnitPrice,
                 discountAmount: itemDiscount,
-                price: round2((Number(item.effectiveUnitPrice) - lineDiscountPerUnit) * item.quantity),
+                price: round2(
+                  (Number(item.effectiveUnitPrice) - lineDiscountPerUnit) * item.quantity,
+                ),
                 labCost: item.labTest.labCost,
                 currency: item.currency,
                 pricingSnapshotJson: toJson({
@@ -475,6 +567,72 @@ class OrderService {
           ? patient.addressState
           : null;
 
+    const parsePatientDob = (value: unknown): Date | null => {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      const trimmed = value.trim();
+      // Accept MMDDYYYY (8 digits) from access payload
+      if (/^\d{8}$/.test(trimmed)) {
+        const mm = Number(trimmed.slice(0, 2));
+        const dd = Number(trimmed.slice(2, 4));
+        const yyyy = Number(trimmed.slice(4, 8));
+        const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      // Accept ISO YYYY-MM-DD
+      const iso = new Date(trimmed);
+      return Number.isNaN(iso.getTime()) ? null : iso;
+    };
+
+    const mapPatientGender = (
+      value: unknown,
+    ): 'MALE' | 'FEMALE' | 'OTHER' | 'PREFER_NOT_TO_SAY' | 'NON_BINARY' | null => {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      const v = value.trim().toUpperCase();
+      if (v === 'M' || v === 'MALE') return 'MALE';
+      if (v === 'F' || v === 'FEMALE') return 'FEMALE';
+      if (v === 'O' || v === 'OTHER') return 'OTHER';
+      if (v === 'NON_BINARY') return 'NON_BINARY';
+      if (v === 'PREFER_NOT_TO_SAY') return 'PREFER_NOT_TO_SAY';
+      return 'OTHER';
+    };
+
+    const patientFirstName = typeof patient.firstName === 'string' ? patient.firstName.trim() : '';
+    const patientLastName = typeof patient.lastName === 'string' ? patient.lastName.trim() : '';
+    const hasPatientInfo = Boolean(patientFirstName && patientLastName);
+    const patientCreateInput = hasPatientInfo
+      ? {
+          relationToUser: 'SELF' as const,
+          firstName: patientFirstName,
+          lastName: patientLastName,
+          dateOfBirth: parsePatientDob(patient.dateOfBirth),
+          gender: mapPatientGender(patient.gender),
+          phoneNumber:
+            typeof patient.phone === 'string' && patient.phone.trim() ? patient.phone.trim() : null,
+          email:
+            typeof patient.email === 'string' && patient.email.trim() ? patient.email.trim() : null,
+          addressLine1:
+            typeof patient.address === 'string' && patient.address.trim()
+              ? patient.address.trim()
+              : null,
+          addressLine2:
+            typeof patient.address2 === 'string' && patient.address2.trim()
+              ? patient.address2.trim()
+              : null,
+          city:
+            typeof patient.city === 'string' && patient.city.trim() ? patient.city.trim() : null,
+          state:
+            typeof patient.state === 'string' && patient.state.trim()
+              ? patient.state.trim().toUpperCase().slice(0, 2)
+              : null,
+          zipCode:
+            typeof patient.zip === 'string' && patient.zip.trim()
+              ? patient.zip.trim()
+              : typeof patient.zipCode === 'string' && (patient.zipCode as string).trim()
+                ? (patient.zipCode as string).trim()
+                : null,
+        }
+      : null;
+
     if (params.req) {
       await stateRestrictionService.assertOrderingAllowed({
         req: params.req,
@@ -486,10 +644,37 @@ class OrderService {
       });
     }
 
+    const trimmedPromoCode =
+      typeof params.promoCode === 'string' && params.promoCode.trim()
+        ? params.promoCode.trim()
+        : null;
+
+    const unitPrice = Number(labTest.salePrice ?? labTest.retailPrice);
+    const quantity = 1;
+    const subtotal = round2(unitPrice * quantity);
+
+    let promoResult: Awaited<ReturnType<typeof promoCodesService.validateForCheckout>> | null =
+      null;
+    if (trimmedPromoCode) {
+      promoResult = await promoCodesService.validateForCheckout({
+        code: trimmedPromoCode,
+        subtotal,
+        items: [
+          {
+            quantity,
+            effectiveUnitPrice: unitPrice,
+            labCost: Number(labTest.labCost),
+          },
+        ],
+      });
+    }
+
+    const discountAmount = round2(promoResult?.appliedDiscount || 0);
+    const discountedSubtotal = round2(Math.max(0, subtotal - discountAmount));
+
     const createdOrderId = await prisma.$transaction(async (tx) => {
-      const subtotal = round2(Number(labTest.salePrice ?? labTest.retailPrice));
-      const processingFee = this.computeProcessingFee(subtotal);
-      const total = round2(subtotal + processingFee);
+      const processingFee = this.computeProcessingFee(discountedSubtotal);
+      const total = round2(discountedSubtotal + processingFee);
 
       const order = await tx.order.create({
         data: {
@@ -499,18 +684,24 @@ class OrderService {
           orderNumber: buildOrderNumber(),
           currency: labTest.currency,
           subtotal,
+          discount: discountAmount,
           processingFee,
           total,
           paymentStatus: PaymentStatus.PENDING,
           orderStatus: OrderStatus.PENDING_PAYMENT,
           accessSubmissionStatus: AccessSubmissionStatus.NOT_SUBMITTED,
           accessPayloadJson: toJson(params.accessPayloadJson || {}),
-          customerEmailSnapshot:
-            typeof patient.email === 'string' ? patient.email : null,
-          customerPhoneSnapshot:
-            typeof patient.phone === 'string' ? patient.phone : null,
+          customerEmailSnapshot: typeof patient.email === 'string' ? patient.email : null,
+          customerPhoneSnapshot: typeof patient.phone === 'string' ? patient.phone : null,
           currentTrackingStep: orderStateMachine.getStep(OrderStatus.PENDING_PAYMENT),
           trackingUpdatedAt: new Date(),
+          ...(patientCreateInput
+            ? {
+                patient: {
+                  create: patientCreateInput,
+                },
+              }
+            : {}),
           orderItems: {
             create: [
               {
@@ -519,11 +710,11 @@ class OrderService {
                 labTestCode: labTest.labTestCode,
                 testName: labTest.test.name,
                 laboratoryName: labTest.laboratory.name,
-                quantity: 1,
+                quantity,
                 baseRetailPrice: labTest.retailPrice,
                 effectiveUnitPrice: labTest.salePrice ?? labTest.retailPrice,
-                discountAmount: 0,
-                price: labTest.salePrice ?? labTest.retailPrice,
+                discountAmount,
+                price: round2(unitPrice * quantity - discountAmount),
                 labCost: labTest.labCost,
                 currency: labTest.currency,
               },
@@ -531,6 +722,29 @@ class OrderService {
           },
         },
       });
+
+      if (promoResult) {
+        await tx.orderPromoCode.create({
+          data: {
+            orderId: order.id,
+            promoCodeId: promoResult.promo.id,
+            appliedCode: promoResult.promo.code,
+            discountType: promoResult.promo.discountType,
+            discountValue: promoResult.promo.discountValue,
+            pricingStrategy: promoResult.promo.pricingStrategy,
+            discountAmount,
+          },
+        });
+
+        await tx.promoCode.update({
+          where: { id: promoResult.promo.id },
+          data: {
+            usedCount: {
+              increment: 1,
+            },
+          },
+        });
+      }
 
       await orderTrackingService.track(
         {
@@ -541,6 +755,12 @@ class OrderService {
           actorType: params.userId ? 'CUSTOMER' : 'SYSTEM',
           actorId: params.userId,
           message: 'Order created and awaiting payment',
+          metadata: promoResult
+            ? {
+                promoCode: promoResult.promo.code,
+                discountAmount,
+              }
+            : undefined,
         },
         tx,
       );
@@ -760,23 +980,27 @@ class OrderService {
       throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
     }
 
-    const updated = await this.transitionOrderStatus(params.orderId, OrderStatus.REQUISITION_READY, {
-      actorType: 'WORKER',
-      eventType: 'LAB_SUBMISSION_SUCCEEDED',
-      message: 'Lab submission succeeded and requisition is ready',
-      updateData: {
-        accessSubmissionStatus: AccessSubmissionStatus.SUBMITTED,
-        accessOrderId: params.accessOrderId || null,
-        requisitionPdfUrl: params.requisitionPdfUrl || null,
-        requisitionPdfPath: params.requisitionPdfPath || null,
-        labVisitInstructions: params.labVisitInstructions || null,
-        labSubmissionPayloadJson: toNullableJsonValue(params.rawPayload),
-        labSubmissionResponseJson: toNullableJsonValue(params.rawResponse),
-        accessResponseJson: toNullableJsonValue(params.rawResponse),
-        submittedToLabAt: new Date(),
-        labOrderPlacedAt: new Date(),
+    const updated = await this.transitionOrderStatus(
+      params.orderId,
+      OrderStatus.REQUISITION_READY,
+      {
+        actorType: 'WORKER',
+        eventType: 'LAB_SUBMISSION_SUCCEEDED',
+        message: 'Lab submission succeeded and requisition is ready',
+        updateData: {
+          accessSubmissionStatus: AccessSubmissionStatus.SUBMITTED,
+          accessOrderId: params.accessOrderId || null,
+          requisitionPdfUrl: params.requisitionPdfUrl || null,
+          requisitionPdfPath: params.requisitionPdfPath || null,
+          labVisitInstructions: params.labVisitInstructions || null,
+          labSubmissionPayloadJson: toNullableJsonValue(params.rawPayload),
+          labSubmissionResponseJson: toNullableJsonValue(params.rawResponse),
+          accessResponseJson: toNullableJsonValue(params.rawResponse),
+          submittedToLabAt: new Date(),
+          labOrderPlacedAt: new Date(),
+        },
       },
-    });
+    );
 
     await requisitionsService.create({
       orderId: updated.id,
@@ -787,8 +1011,7 @@ class OrderService {
       requisitionPdfUrl: params.requisitionPdfUrl || null,
       requisitionPdfPath: params.requisitionPdfPath || null,
       labOrderId: params.accessOrderId || null,
-      drawCenterSnapshotJson: (
-        params.confirmedLabLocation ||
+      drawCenterSnapshotJson: (params.confirmedLabLocation ||
         (updated.drawCenter
           ? {
               id: updated.drawCenter.id,
@@ -798,8 +1021,7 @@ class OrderService {
               state: updated.drawCenter.state,
               zipCode: updated.drawCenter.zipCode,
             }
-          : null)
-      ) as Prisma.InputJsonValue | null,
+          : null)) as Prisma.InputJsonValue | null,
       rawPayloadJson: (params.rawPayload || null) as Prisma.InputJsonValue | null,
       rawResponseJson: (params.rawResponse || null) as Prisma.InputJsonValue | null,
       status: 'READY',
@@ -854,6 +1076,64 @@ class OrderService {
     await this.emitManualReviewQueueUpdate(orderId);
     await this.notifyOrder(orderId, 'LAB_SUBMISSION_FAILED', {
       reason: payload.errorMessage || 'Lab submission failed',
+    });
+    await this.notifyAdmins(orderId, 'LAB_SUBMISSION_FAILED', {
+      reason: payload.errorMessage || 'Lab submission failed',
+      errorCode: payload.errorCode || null,
+    });
+    return this.getOrderById(orderId);
+  }
+
+  /**
+   * Cancel an order placed with the lab partner. Called when ACCESS (or any lab provider)
+   * reports the order was cancelled, or when an admin cancels manually.
+   */
+  async markLabOrderCancelled(
+    orderId: string,
+    payload: {
+      reason?: string;
+      source?: 'ACCESS' | 'ADMIN' | 'SYSTEM' | 'CUSTOMER';
+      actorId?: string | null;
+      rawResponse?: Prisma.InputJsonValue | null;
+    } = {},
+  ) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (order.orderStatus === OrderStatus.CANCELLED) {
+      return this.getOrderById(orderId);
+    }
+
+    const reason = payload.reason || 'Lab order was cancelled by the lab partner';
+    const source = payload.source || 'ACCESS';
+
+    await this.transitionOrderStatus(orderId, OrderStatus.CANCELLED, {
+      actorType: source === 'ADMIN' ? 'ADMIN' : source === 'CUSTOMER' ? 'CUSTOMER' : 'WORKER',
+      actorId: payload.actorId || null,
+      eventType: 'ORDER_CANCELLED',
+      message: reason,
+      metadata: {
+        source,
+      },
+      updateData: {
+        accessSubmissionStatus: AccessSubmissionStatus.CANCELLED,
+        cancelledAt: new Date(),
+        accessErrorMessage: reason,
+        labSubmissionResponseJson: toNullableJsonValue(payload.rawResponse ?? null),
+      },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.notifyOrder(orderId, 'ORDER_CANCELLED', {
+      cancellationReason: reason,
+      reason,
+    });
+    await this.notifyAdmins(orderId, 'ORDER_CANCELLED', {
+      cancellationReason: reason,
+      reason,
+      source,
     });
     return this.getOrderById(orderId);
   }
@@ -1043,19 +1323,38 @@ class OrderService {
       {
         step: 2,
         label: 'Payment Completed',
-        completed: ['AWAITING_USER_CONFIRMATION', 'READY_FOR_LAB_SUBMISSION', 'LAB_SUBMISSION_IN_PROGRESS', 'LAB_SUBMISSION_FAILED', 'MANUAL_REVIEW_REQUIRED', 'SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
+        completed: [
+          'AWAITING_USER_CONFIRMATION',
+          'READY_FOR_LAB_SUBMISSION',
+          'LAB_SUBMISSION_IN_PROGRESS',
+          'LAB_SUBMISSION_FAILED',
+          'MANUAL_REVIEW_REQUIRED',
+          'SUBMITTED_TO_LAB',
+          'REQUISITION_READY',
+          'COMPLETED',
+        ].includes(order.orderStatus),
         completedAt: order.paidAt,
       },
       {
         step: 3,
         label: 'User Confirmed',
-        completed: ['READY_FOR_LAB_SUBMISSION', 'LAB_SUBMISSION_IN_PROGRESS', 'LAB_SUBMISSION_FAILED', 'MANUAL_REVIEW_REQUIRED', 'SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
+        completed: [
+          'READY_FOR_LAB_SUBMISSION',
+          'LAB_SUBMISSION_IN_PROGRESS',
+          'LAB_SUBMISSION_FAILED',
+          'MANUAL_REVIEW_REQUIRED',
+          'SUBMITTED_TO_LAB',
+          'REQUISITION_READY',
+          'COMPLETED',
+        ].includes(order.orderStatus),
         completedAt: order.userConfirmedAt,
       },
       {
         step: 4,
         label: 'Submitted To Lab',
-        completed: ['SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(order.orderStatus),
+        completed: ['SUBMITTED_TO_LAB', 'REQUISITION_READY', 'COMPLETED'].includes(
+          order.orderStatus,
+        ),
         completedAt: order.submittedToLabAt,
       },
       {
@@ -1092,9 +1391,7 @@ class OrderService {
     }
 
     const requisition =
-      order.requisitions.find((item) => item.status === 'READY') ||
-      order.requisitions[0] ||
-      null;
+      order.requisitions.find((item) => item.status === 'READY') || order.requisitions[0] || null;
     const url = requisition?.requisitionPdfUrl || order.requisitionPdfUrl;
 
     if (!url) {
@@ -1136,11 +1433,199 @@ class OrderService {
     await this.emitTrackingUpdate(orderId);
   }
 
+  async adminManualReorder(orderId: string, actorId?: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (
+      order.orderStatus !== OrderStatus.CANCELLED &&
+      order.orderStatus !== OrderStatus.LAB_SUBMISSION_FAILED &&
+      order.orderStatus !== OrderStatus.MANUAL_REVIEW_REQUIRED
+    ) {
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        `Order cannot be manually re-ordered from status ${order.orderStatus}`,
+      );
+    }
+
+    if (order.paymentStatus !== PaymentStatus.SUCCEEDED) {
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        'Order payment must be SUCCEEDED to manually re-order',
+      );
+    }
+
+    await this.transitionOrderStatus(orderId, OrderStatus.READY_FOR_LAB_SUBMISSION, {
+      actorType: 'ADMIN',
+      actorId: actorId || null,
+      eventType: 'ADMIN_RESEND_TRIGGERED',
+      message: 'Admin manually re-queued cancelled order for lab submission',
+      updateData: {
+        manualReviewRequired: false,
+        accessSubmissionStatus: AccessSubmissionStatus.NOT_SUBMITTED,
+        labSubmissionErrorCode: null,
+        labSubmissionErrorMessage: null,
+        accessErrorMessage: null,
+        cancelledAt: null,
+      },
+    });
+
+    await auditLogService.record({
+      action: 'ORDER_MANUAL_REORDER',
+      resource: 'order',
+      resourceId: orderId,
+      actorId: actorId || undefined,
+      details: { previousStatus: order.orderStatus },
+    });
+
+    await this.emitTrackingUpdate(orderId);
+    await this.emitManualReviewQueueUpdate(orderId);
+    return this.getOrderById(orderId);
+  }
+
+  async adminRequestRefund(orderId: string, actorId: string, reason?: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (
+      order.paymentStatus !== PaymentStatus.SUCCEEDED &&
+      order.paymentStatus !== PaymentStatus.PARTIALLY_REFUNDED
+    ) {
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        order.paymentStatus === PaymentStatus.REFUNDED
+          ? 'Order has already been fully refunded'
+          : 'Order has not been paid; no refund possible',
+      );
+    }
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        refundReason: reason || 'Admin refund request',
+      },
+    });
+
+    await orderTrackingService.track({
+      orderId,
+      eventType: 'SUPPORT_TICKET_CREATED',
+      previousStatus: order.orderStatus,
+      nextStatus: order.orderStatus,
+      actorType: 'ADMIN',
+      actorId: actorId || null,
+      message: `Refund requested by admin: ${reason || 'No reason provided'}`,
+    });
+
+    await auditLogService.record({
+      action: 'ORDER_REFUND_REQUESTED',
+      resource: 'order',
+      resourceId: orderId,
+      actorId,
+      details: { reason: reason || null },
+    });
+
+    return this.getOrderById(orderId);
+  }
+
+  async adminApproveRefund(orderId: string, actorId: string, reason?: string) {
+    const order = await this.repository.findById(orderId);
+    if (!order) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+    }
+
+    if (order.paymentStatus !== PaymentStatus.SUCCEEDED) {
+      throw new ApiError(httpStatus.CONFLICT, 'Order has not been paid; no refund possible');
+    }
+
+    const fullOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { stripePaymentIntentId: true, stripeChargeId: true, total: true },
+    });
+
+    if (!fullOrder?.stripePaymentIntentId) {
+      throw new ApiError(
+        httpStatus.UNPROCESSABLE_ENTITY,
+        'No Stripe PaymentIntent found for this order',
+      );
+    }
+
+    const pi = await stripePaymentGateway.retrievePaymentIntent(fullOrder.stripePaymentIntentId);
+    const chargeId =
+      fullOrder.stripeChargeId ||
+      (typeof pi.latest_charge === 'string' ? pi.latest_charge : (pi.latest_charge as any)?.id) ||
+      null;
+
+    if (!chargeId) {
+      throw new ApiError(httpStatus.UNPROCESSABLE_ENTITY, 'No Stripe charge found for this order');
+    }
+
+    const refundAmountCents = Math.round(Number(fullOrder.total) * 100);
+    const stripeRefund = await stripePaymentGateway.createRefund(
+      {
+        charge: chargeId,
+        amount: refundAmountCents,
+        reason: 'requested_by_customer',
+        metadata: {
+          orderId,
+          internalReason: reason || order.refundReason || 'Admin-approved refund',
+        },
+      },
+      { idempotencyKey: `refund_${orderId}` },
+    );
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentStatus: PaymentStatus.REFUNDED,
+        refundAmount: refundAmountCents / 100,
+        refundReason: reason || order.refundReason || null,
+      },
+    });
+
+    const refund = {
+      refundId: stripeRefund.id,
+      amount: refundAmountCents / 100,
+      status: stripeRefund.status,
+    };
+
+    await orderTrackingService.track({
+      orderId,
+      eventType: 'ORDER_CANCELLED',
+      previousStatus: order.orderStatus,
+      nextStatus: order.orderStatus,
+      actorType: 'ADMIN',
+      actorId: actorId || null,
+      message: `Refund approved and issued by superadmin. Refund ID: ${refund.refundId}`,
+      metadata: { refundId: refund.refundId, amount: refund.amount },
+    });
+
+    await auditLogService.record({
+      action: 'ORDER_REFUND_APPROVED',
+      resource: 'order',
+      resourceId: orderId,
+      actorId,
+      details: { refundId: refund.refundId, amount: refund.amount, reason },
+    });
+
+    await this.notifyOrder(orderId, 'ORDER_CANCELLED', {
+      cancellationReason: reason || 'Your order has been refunded by our team.',
+    });
+
+    return { ...(await this.getOrderById(orderId)), refund };
+  }
+
   async expireStaleOrders(cutoff: Date) {
     const orders = await this.repository.findStaleOrders(cutoff);
 
     for (const order of orders) {
-      if (order.orderStatus === OrderStatus.CANCELLED || order.orderStatus === OrderStatus.COMPLETED) {
+      if (
+        order.orderStatus === OrderStatus.CANCELLED ||
+        order.orderStatus === OrderStatus.COMPLETED
+      ) {
         continue;
       }
 

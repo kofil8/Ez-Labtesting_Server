@@ -60,9 +60,17 @@ export class OrdersRepository {
   listManualReview(limit: number) {
     return this.db.order.findMany({
       where: {
-        orderStatus: {
-          in: ['LAB_SUBMISSION_FAILED', 'MANUAL_REVIEW_REQUIRED'],
-        },
+        OR: [
+          {
+            orderStatus: {
+              in: ['LAB_SUBMISSION_FAILED', 'MANUAL_REVIEW_REQUIRED'],
+            },
+          },
+          {
+            orderStatus: 'CANCELLED',
+            paymentStatus: 'SUCCEEDED',
+          },
+        ],
       },
       include: orderInclude,
       orderBy: { updatedAt: 'desc' },

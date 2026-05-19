@@ -1,10 +1,10 @@
 import { Role } from '@prisma/client';
 import { NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
+import ApiError from '../../errors/ApiErrors';
 import { enqueueLabSubmission } from '../../queues/labSubmission.queue';
 import { paymentService } from '../payment/payment.service';
 import { orderService } from './orders.service';
-import ApiError from '../../errors/ApiErrors';
 
 const sendControllerError = (
   res: Response,
@@ -35,10 +35,13 @@ class OrderController {
     try {
       const authUser = (req as any).user;
       if (!authUser?.id) {
-        return res.status(httpStatus.UNAUTHORIZED).json({ success: false, message: 'Unauthorized' });
+        return res
+          .status(httpStatus.UNAUTHORIZED)
+          .json({ success: false, message: 'Unauthorized' });
       }
 
-      const { labTestId, accessPayloadJson, laboratoryCode, laboratoryId, labCenterId } = req.body;
+      const { labTestId, accessPayloadJson, laboratoryCode, laboratoryId, labCenterId, promoCode } =
+        req.body;
       const order = await orderService.createOrder({
         userId: authUser.id,
         req,
@@ -47,6 +50,7 @@ class OrderController {
         drawCenterId: labCenterId,
         laboratoryId,
         laboratoryCode,
+        promoCode,
       });
 
       const payment = await paymentService.createOrUpdatePaymentIntentForOrder({
@@ -182,8 +186,102 @@ class OrderController {
     return this.adminResendSubmission(req, res);
   }
 
+  async adminCancelOrder(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      const orderId = asParamString(req.params.orderId) as string;
+      const reason =
+        typeof req.body?.reason === 'string' && req.body.reason.trim()
+          ? req.body.reason.trim()
+          : undefined;
+      const source =
+        typeof req.body?.source === 'string' && req.body.source
+          ? (req.body.source as 'ACCESS' | 'ADMIN' | 'SYSTEM')
+          : 'ADMIN';
+
+      const order = await orderService.markLabOrderCancelled(orderId, {
+        reason,
+        source,
+        actorId: authUser?.id || null,
+        rawResponse: req.body?.rawResponse ?? null,
+      });
+
+      return res.status(httpStatus.OK).json({
+        success: true,
+        message: 'Order cancelled',
+        data: { order },
+      });
+    } catch (error) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to cancel order',
+      });
+    }
+  }
+
   async retryAccessPlacement(req: Request, res: Response) {
     return this.adminResendSubmission(req, res);
+  }
+
+  async adminManualReorder(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      const orderId = asParamString(req.params.orderId) as string;
+      const order = await orderService.adminManualReorder(orderId, authUser?.id);
+      const queue = await enqueueLabSubmission(order.id);
+      return res.status(httpStatus.OK).json({
+        success: true,
+        message: 'Order manually re-queued for lab submission',
+        data: { order, queue },
+      });
+    } catch (error) {
+      return sendControllerError(res, error, 'Failed to manually re-order');
+    }
+  }
+
+  async adminRequestRefund(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      const orderId = asParamString(req.params.orderId) as string;
+      const reason =
+        typeof req.body?.reason === 'string' && req.body.reason.trim()
+          ? req.body.reason.trim()
+          : undefined;
+      const order = await orderService.adminRequestRefund(orderId, authUser?.id, reason);
+      return res.status(httpStatus.OK).json({
+        success: true,
+        message: 'Refund request recorded. Awaiting superadmin approval.',
+        data: { order },
+      });
+    } catch (error) {
+      return sendControllerError(res, error, 'Failed to request refund');
+    }
+  }
+
+  async adminApproveRefund(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      const isSuperAdmin = authUser?.role === Role.SUPER_ADMIN;
+      if (!isSuperAdmin) {
+        return res.status(httpStatus.FORBIDDEN).json({
+          success: false,
+          message: 'Only superadmins can approve refunds',
+        });
+      }
+      const orderId = asParamString(req.params.orderId) as string;
+      const reason =
+        typeof req.body?.reason === 'string' && req.body.reason.trim()
+          ? req.body.reason.trim()
+          : undefined;
+      const result = await orderService.adminApproveRefund(orderId, authUser.id, reason);
+      return res.status(httpStatus.OK).json({
+        success: true,
+        message: 'Refund approved and issued successfully',
+        data: result,
+      });
+    } catch (error) {
+      return sendControllerError(res, error, 'Failed to approve refund');
+    }
   }
 
   async getOrderTracking(req: Request, res: Response) {

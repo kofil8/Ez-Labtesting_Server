@@ -26,6 +26,7 @@ type TestPayload = {
   maxAge?: number;
   isActive?: boolean;
   isPopular?: boolean;
+  removeTestImage?: boolean;
   componentTestIds?: string[];
 };
 
@@ -752,6 +753,15 @@ const updateTestInDB = async (id: string, payload: TestPayload, file?: Express.M
   }
 
   let testImage = sanitizeTestImageUrl(existingTest.testImageUrl);
+
+  if (payload.removeTestImage && existingTest.testImageUrl && !file?.location) {
+    try {
+      await deleteFile(existingTest.testImageUrl);
+    } catch (error) {
+      console.error('Failed to delete test image:', error);
+    }
+    testImage = null;
+  }
 
   if (file?.location) {
     if (existingTest.testImageUrl) {

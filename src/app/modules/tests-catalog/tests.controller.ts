@@ -7,12 +7,63 @@ import { TestServices } from './tests.service';
 
 const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
 
+const parseBooleanField = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return value;
+};
+
+const parseIntegerField = (value: unknown) => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return value;
+};
+
+const parseStringArrayField = (value: unknown) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return value;
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // Fall back to comma-separated form below.
+  }
+
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 const normalizePayload = (payload: Record<string, unknown>) => {
   const normalized = { ...payload };
 
   if (normalized.baseTurnaroundDays && typeof normalized.baseTurnaroundDays === 'string') {
     const turnaround = normalizeTurnaround(normalized.baseTurnaroundDays);
     normalized.baseTurnaroundDays = Math.ceil(turnaround.hours / 24);
+  }
+
+  for (const key of ['isPanel', 'requiresFasting', 'isActive', 'isPopular', 'removeTestImage']) {
+    if (normalized[key] !== undefined) {
+      normalized[key] = parseBooleanField(normalized[key]);
+    }
+  }
+
+  for (const key of ['minAge', 'maxAge']) {
+    if (normalized[key] !== undefined) {
+      normalized[key] = parseIntegerField(normalized[key]);
+    }
+  }
+
+  for (const key of ['cptCode', 'searchKeywords', 'componentTestIds']) {
+    if (normalized[key] !== undefined) {
+      normalized[key] = parseStringArrayField(normalized[key]);
+    }
   }
 
   // backward compatibility for old typo keys

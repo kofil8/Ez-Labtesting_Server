@@ -6,13 +6,12 @@ import { orderController } from './orders.controller';
 
 const router: Router = express.Router();
 
-router.post(
-  '/',
-  auth(Role.CUSTOMER),
-  enforceCustomerOrderingAvailability,
-  (req, res, next) => orderController.createOrder(req, res, next),
+router.post('/', auth(Role.CUSTOMER), enforceCustomerOrderingAvailability, (req, res, next) =>
+  orderController.createOrder(req, res, next),
 );
-router.get('/resume', auth(Role.CUSTOMER), (req, res) => orderController.getResumableOrder(req, res));
+router.get('/resume', auth(Role.CUSTOMER), (req, res) =>
+  orderController.getResumableOrder(req, res),
+);
 router.get('/mine', auth(Role.CUSTOMER), (req, res) => orderController.getMyOrders(req, res));
 router.get('/manual-review', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
   orderController.getManualReviewOrders(req, res),
@@ -28,6 +27,18 @@ router.post('/:orderId/retry-access', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, 
 );
 router.post('/:orderId/manual-review/approve', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
   orderController.approveManualReviewOrder(req, res),
+);
+router.post('/:orderId/cancel', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
+  orderController.adminCancelOrder(req, res),
+);
+router.post('/:orderId/manual-reorder', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
+  orderController.adminManualReorder(req, res),
+);
+router.post('/:orderId/request-refund', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
+  orderController.adminRequestRefund(req, res),
+);
+router.post('/:orderId/approve-refund', auth(Role.SUPER_ADMIN), (req, res) =>
+  orderController.adminApproveRefund(req, res),
 );
 router.get('/:orderId/tracking', auth(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
   orderController.getOrderTracking(req, res),
@@ -50,6 +61,8 @@ router.post(
 router.get('/:orderId', auth(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
   orderController.getOrderById(req, res),
 );
-router.get('/', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) => orderController.getAllOrders(req, res));
+router.get('/', auth(Role.ADMIN, Role.SUPER_ADMIN), (req, res) =>
+  orderController.getAllOrders(req, res),
+);
 
 export const OrderRoutes = router;

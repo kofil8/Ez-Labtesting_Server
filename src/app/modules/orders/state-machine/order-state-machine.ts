@@ -20,7 +20,7 @@ const transitionMap: Record<OrderStatus, OrderStatus[]> = {
   SUBMITTED_TO_LAB: ['REQUISITION_READY', 'COMPLETED', 'MANUAL_REVIEW_REQUIRED'],
   REQUISITION_READY: ['COMPLETED', 'MANUAL_REVIEW_REQUIRED'],
   COMPLETED: [],
-  CANCELLED: [],
+  CANCELLED: ['READY_FOR_LAB_SUBMISSION'],
 };
 
 const stepMap: Record<OrderStatus, number> = {

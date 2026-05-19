@@ -851,6 +851,7 @@ enum OrderTrackingEventType {
   REQUISITION_CREATED
   SUPPORT_TICKET_CREATED
   ADMIN_RESEND_TRIGGERED
+  ORDER_CANCELLED
 }
 
 enum TrackingActorType {

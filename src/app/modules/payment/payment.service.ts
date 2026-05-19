@@ -46,10 +46,7 @@ export class PaymentService {
       order.orderStatus === OrderStatus.COMPLETED ||
       order.orderStatus === OrderStatus.CANCELLED
     ) {
-      throw new ApiError(
-        httpStatus.CONFLICT,
-        `Order payment is already in progress or completed`,
-      );
+      throw new ApiError(httpStatus.CONFLICT, `Order payment is already in progress or completed`);
     }
 
     const amountCents = this.toCents(order.total);
@@ -80,7 +77,8 @@ export class PaymentService {
 
       // Ensure correct amount/currency + metadata (safe to update in most states)
       const needsUpdate =
-        pi.amount !== amountCents || pi.currency !== (order.currency || env.PAYMENT_CURRENCY).toLowerCase();
+        pi.amount !== amountCents ||
+        pi.currency !== (order.currency || env.PAYMENT_CURRENCY).toLowerCase();
       if (needsUpdate) {
         await stripePaymentGateway.updatePaymentIntent(pi.id, {
           amount: amountCents,
@@ -168,6 +166,77 @@ export class PaymentService {
       paymentMethodTypes: paymentIntent.payment_method_types || [],
       metadata: paymentIntent.metadata || {},
     };
+  }
+
+  async issueRefund(params: { orderId: string; reason?: string; amountCents?: number }) {
+    const order = await prisma.order.findUnique({
+      where: { id: params.orderId },
+      select: {
+        id: true,
+        stripePaymentIntentId: true,
+        stripeChargeId: true,
+        paymentStatus: true,
+        total: true,
+        refundAmount: true,
+      },
+    });
+
+    if (!order) throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
+
+    if (
+      order.paymentStatus !== PaymentStatus.SUCCEEDED &&
+      order.paymentStatus !== PaymentStatus.REFUNDED &&
+      order.paymentStatus !== PaymentStatus.PARTIALLY_REFUNDED
+    ) {
+      throw new ApiError(httpStatus.CONFLICT, 'Order payment has not been captured; cannot refund');
+    }
+
+    if (order.paymentStatus === PaymentStatus.REFUNDED) {
+      throw new ApiError(httpStatus.CONFLICT, 'Order has already been fully refunded');
+    }
+
+    if (!order.stripePaymentIntentId) {
+      throw new ApiError(
+        httpStatus.UNPROCESSABLE_ENTITY,
+        'No Stripe PaymentIntent found for this order',
+      );
+    }
+
+    const pi = await stripePaymentGateway.retrievePaymentIntent(order.stripePaymentIntentId);
+    const chargeId =
+      order.stripeChargeId ||
+      (typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id) ||
+      null;
+
+    if (!chargeId) {
+      throw new ApiError(httpStatus.UNPROCESSABLE_ENTITY, 'No Stripe charge found for this order');
+    }
+
+    const refundCents = params.amountCents ?? this.toCents(order.total);
+    const refund = await stripePaymentGateway.createRefund(
+      {
+        charge: chargeId,
+        amount: refundCents,
+        reason: 'requested_by_customer',
+        metadata: {
+          orderId: order.id,
+          internalReason: params.reason || 'Admin-issued refund',
+        },
+      },
+      { idempotencyKey: `refund_${order.id}` },
+    );
+
+    const isFullRefund = refundCents >= this.toCents(order.total);
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentStatus: isFullRefund ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED,
+        refundAmount: refundCents / 100,
+        refundReason: params.reason || null,
+      },
+    });
+
+    return { refundId: refund.id, amount: refundCents / 100, status: refund.status };
   }
 
   private toCents(amountDollars: Prisma.Decimal | number) {

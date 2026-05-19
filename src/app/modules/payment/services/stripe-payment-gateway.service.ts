@@ -22,6 +22,14 @@ class StripePaymentGateway {
     return this.client.webhooks.constructEvent(payload, signature, env.STRIPE_WEBHOOK_SECRET);
   }
 
+  createRefund(params: Stripe.RefundCreateParams, options?: Stripe.RequestOptions) {
+    return this.client.refunds.create(params, options);
+  }
+
+  retrieveCharge(chargeId: string) {
+    return this.client.charges.retrieve(chargeId);
+  }
+
   mapIntentStatus(status: Stripe.PaymentIntent.Status) {
     switch (status) {
       case 'succeeded':
