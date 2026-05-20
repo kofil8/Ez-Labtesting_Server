@@ -57,6 +57,9 @@ router.patch('/:id/read', auth(), validateMarkAsRead, NotificationController.mar
 // Mark all notifications as read
 router.patch('/read/all', auth(), NotificationController.markAllAsRead);
 
+// Delete all notifications for current user
+router.delete('/', auth(), NotificationController.deleteAllNotifications);
+
 // Delete notification
 router.delete('/:id', auth(), NotificationController.deleteNotification);
 

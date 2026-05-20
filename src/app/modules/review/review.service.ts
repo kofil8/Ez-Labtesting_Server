@@ -17,6 +17,14 @@ type ReviewWithUser = Prisma.TestReviewGetPayload<{
 }>;
 
 export class ReviewService {
+  private static publicReviewWhere(testId?: string): Prisma.TestReviewWhereInput {
+    return {
+      ...(testId ? { testId } : {}),
+      isPublished: true,
+      isFlagged: false,
+    };
+  }
+
   private static toReviewDto(review: ReviewWithUser) {
     return {
       id: review.id,
@@ -90,9 +98,11 @@ export class ReviewService {
         orderBy = { createdAt: 'desc' };
     }
 
+    const where = ReviewService.publicReviewWhere(testId);
+
     const [reviews, total] = await Promise.all([
       prisma.testReview.findMany({
-        where: { testId },
+        where,
         include: {
           user: {
             select: {
@@ -106,12 +116,12 @@ export class ReviewService {
         skip,
         take: limit,
       }),
-      prisma.testReview.count({ where: { testId } }),
+      prisma.testReview.count({ where }),
     ]);
 
     // Calculate review statistics
     const stats = await prisma.testReview.aggregate({
-      where: { testId },
+      where,
       _avg: { rating: true },
       _count: true,
     });
@@ -119,7 +129,7 @@ export class ReviewService {
     // Get rating distribution
     const distribution = await prisma.testReview.groupBy({
       by: ['rating'],
-      where: { testId },
+      where,
       _count: true,
     });
 
@@ -165,6 +175,34 @@ export class ReviewService {
     });
 
     return review ? ReviewService.toReviewDto(review) : null;
+  }
+
+  static async getReviewSummary() {
+    const where = ReviewService.publicReviewWhere();
+
+    const [reviewStats, testsProcessed] = await Promise.all([
+      prisma.testReview.aggregate({
+        where,
+        _avg: { rating: true },
+        _count: true,
+      }),
+      prisma.orderItem.count({
+        where: {
+          order: {
+            paymentStatus: PaymentStatus.SUCCEEDED,
+            orderStatus: {
+              not: OrderStatus.CANCELLED,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      averageRating: reviewStats._avg.rating || 0,
+      reviewCount: reviewStats._count,
+      testsProcessed,
+    };
   }
 
   // Get a single review

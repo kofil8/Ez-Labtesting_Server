@@ -48,7 +48,14 @@ const normalizePayload = (payload: Record<string, unknown>) => {
     normalized.baseTurnaroundDays = Math.ceil(turnaround.hours / 24);
   }
 
-  for (const key of ['isPanel', 'requiresFasting', 'isActive', 'isPopular', 'removeTestImage']) {
+  for (const key of [
+    'isPanel',
+    'requiresFasting',
+    'isActive',
+    'isPopular',
+    'isPhysicianReviewed',
+    'removeTestImage',
+  ]) {
     if (normalized[key] !== undefined) {
       normalized[key] = parseBooleanField(normalized[key]);
     }

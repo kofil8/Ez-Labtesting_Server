@@ -97,6 +97,7 @@ model Test {
   maxAge                  Int?     @default(120) @db.SmallInt
   isActive                Boolean  @default(true)
   isPopular               Boolean  @default(false)
+  isPhysicianReviewed     Boolean  @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -501,6 +502,8 @@ model TestReview {
   title              String   @db.VarChar(200)
   comment            String   @db.VarChar(1000)
   isVerifiedPurchase Boolean  @default(false)
+  isPublished        Boolean  @default(true)
+  isFlagged          Boolean  @default(false)
   helpfulCount       Int      @default(0)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

@@ -26,6 +26,7 @@ type TestPayload = {
   maxAge?: number;
   isActive?: boolean;
   isPopular?: boolean;
+  isPhysicianReviewed?: boolean;
   removeTestImage?: boolean;
   componentTestIds?: string[];
 };
@@ -260,6 +261,7 @@ const createTestInDB = async (payload: TestPayload, file?: Express.Multer.File) 
         maxAge: payload.maxAge ?? null,
         isActive: payload.isActive ?? true,
         isPopular: payload.isPopular ?? false,
+        isPhysicianReviewed: payload.isPhysicianReviewed ?? false,
       },
       include: {
         category: {
@@ -297,6 +299,7 @@ const createTestInDB = async (payload: TestPayload, file?: Express.Multer.File) 
     isPanel: created.isPanel,
     isActive: created.isActive,
     isPopular: created.isPopular,
+    isPhysicianReviewed: created.isPhysicianReviewed,
     createdAt: created.createdAt,
   };
 };
@@ -406,6 +409,7 @@ const getTestsDB = async (query: IGetTestsQuery = {}) => {
         searchKeywords: true,
         isActive: true,
         isPopular: true,
+        isPhysicianReviewed: true,
         isPanel: true,
         requiresFasting: true,
         minAge: true,
@@ -529,6 +533,7 @@ const getTestByIdDB = async (identifier: string) => {
       maxAge: true,
       isActive: true,
       isPopular: true,
+      isPhysicianReviewed: true,
       createdAt: true,
       updatedAt: true,
       category: {
@@ -900,6 +905,7 @@ const updateTestInDB = async (id: string, payload: TestPayload, file?: Express.M
     isPanel: updatedTest.isPanel,
     isActive: updatedTest.isActive,
     isPopular: updatedTest.isPopular,
+    isPhysicianReviewed: updatedTest.isPhysicianReviewed,
     updatedAt: updatedTest.updatedAt,
   };
 };

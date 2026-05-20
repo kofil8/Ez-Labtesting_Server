@@ -1,6 +1,7 @@
 jest.mock('../../../config/db', () => ({
   prisma: {
     orderItem: {
+      count: jest.fn(),
       findFirst: jest.fn(),
     },
     reviewHelpful: {
@@ -29,6 +30,7 @@ import { ReviewService } from './review.service';
 
 const mockedPrisma = prisma as unknown as {
   orderItem: {
+    count: jest.Mock;
     findFirst: jest.Mock;
   };
   reviewHelpful: {
@@ -60,6 +62,8 @@ function buildReview(overrides: Partial<Record<string, unknown>> = {}) {
     title: 'Helpful review',
     comment: 'The experience was smooth and easy to follow.',
     isVerifiedPurchase: false,
+    isPublished: true,
+    isFlagged: false,
     helpfulCount: 2,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -108,6 +112,47 @@ describe('ReviewService', () => {
       total: 1,
       totalReviews: 1,
       totalPages: 1,
+    });
+    expect(mockedPrisma.testReview.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          testId: 'test-1',
+          isPublished: true,
+          isFlagged: false,
+        },
+      }),
+    );
+  });
+
+  it('returns site review summary using only public reviews and completed order items', async () => {
+    mockedPrisma.testReview.aggregate.mockResolvedValue({
+      _avg: { rating: 4.9 },
+      _count: 25,
+    });
+    mockedPrisma.orderItem.count.mockResolvedValue(50000);
+
+    await expect(ReviewService.getReviewSummary()).resolves.toEqual({
+      averageRating: 4.9,
+      reviewCount: 25,
+      testsProcessed: 50000,
+    });
+    expect(mockedPrisma.testReview.aggregate).toHaveBeenCalledWith({
+      where: {
+        isPublished: true,
+        isFlagged: false,
+      },
+      _avg: { rating: true },
+      _count: true,
+    });
+    expect(mockedPrisma.orderItem.count).toHaveBeenCalledWith({
+      where: {
+        order: {
+          paymentStatus: 'SUCCEEDED',
+          orderStatus: {
+            not: 'CANCELLED',
+          },
+        },
+      },
     });
   });
 

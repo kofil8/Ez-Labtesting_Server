@@ -8,6 +8,7 @@ const router = express.Router();
 router.get('/test/:testId/me', auth(), ReviewController.getCurrentUserReviewForTest);
 
 // Public routes
+router.get('/summary', ReviewController.getReviewSummary);
 router.get('/test/:testId', ReviewController.getReviewsForTest);
 router.get('/:reviewId', ReviewController.getReview);
 

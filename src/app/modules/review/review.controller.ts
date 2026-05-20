@@ -8,6 +8,16 @@ import { createReviewSchema, getReviewsQuery, updateReviewSchema } from './revie
 const asParamString = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
 
 export class ReviewController {
+  static getReviewSummary = catchAsync(async (_req: Request, res: Response) => {
+    const summary = await ReviewService.getReviewSummary();
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      message: 'Review summary retrieved successfully',
+      data: summary,
+    });
+  });
+
   // Get reviews for a test
   static getReviewsForTest = catchAsync(async (req: Request, res: Response) => {
     const rawTestId = req.params.testId as string | string[];

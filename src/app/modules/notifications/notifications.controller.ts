@@ -91,8 +91,7 @@ export const NotificationController = {
   getNotifications: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const query: GetNotificationsQuery =
-      (res.locals.validatedQuery as GetNotificationsQuery | undefined) ||
-      (req.query as any);
+      (res.locals.validatedQuery as GetNotificationsQuery | undefined) || (req.query as any);
 
     const { page = 1, limit = 20, type, isRead } = query;
 
@@ -116,8 +115,7 @@ export const NotificationController = {
   markAsRead: catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const params: MarkAsReadParams =
-      (res.locals.validatedParams as MarkAsReadParams | undefined) ||
-      (req.params as any);
+      (res.locals.validatedParams as MarkAsReadParams | undefined) || (req.params as any);
     const { id } = params;
 
     const notification = await NotificationService.markAsRead(userId, id);
@@ -158,6 +156,21 @@ export const NotificationController = {
       success: true,
       message: 'Unread count retrieved',
       data: { unreadCount: count },
+    });
+  }),
+
+  /**
+   * Delete all notifications for current user
+   */
+  deleteAllNotifications: catchAsync(async (req: Request, res: Response) => {
+    const userId = (req as any).user.id;
+
+    await NotificationService.deleteAllNotifications(userId);
+
+    sendResponse(res, {
+      statusCode: 200,
+      success: true,
+      message: 'All notifications deleted successfully',
     });
   }),
 

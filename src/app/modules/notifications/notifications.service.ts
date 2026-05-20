@@ -1,10 +1,4 @@
-import {
-  Notification,
-  NotificationPriority,
-  NotificationType,
-  Prisma,
-  Role,
-} from '@prisma/client';
+import { Notification, NotificationPriority, NotificationType, Prisma, Role } from '@prisma/client';
 import { emailQueue, fcmQueue } from '../../../config/queue';
 import { getFirebaseMessaging } from '../../../lib/firebaseAdmin';
 import prisma from '../../../shared/prisma';
@@ -349,7 +343,11 @@ export const NotificationService = {
 
   async dispatchNotification(notification: Notification, email?: RenderedEmail | null) {
     const payload = formatNotificationPayload(notification);
-    const socketDelivered = socketManager.emitToUser(notification.userId, 'notification:new', payload);
+    const socketDelivered = socketManager.emitToUser(
+      notification.userId,
+      'notification:new',
+      payload,
+    );
 
     if (socketDelivered) {
       await addDeliveredVia(notification.id, 'socket');
@@ -642,6 +640,18 @@ export const NotificationService = {
         expiresAt: { gt: new Date() },
       },
     });
+  },
+
+  async deleteAllNotifications(userId: string) {
+    await prisma.notification.deleteMany({
+      where: { userId },
+    });
+
+    socketManager.emitToUser(userId, 'notification:count-update', {
+      unreadCount: 0,
+    });
+
+    return { success: true };
   },
 
   async deleteNotification(userId: string, notificationId: string) {
