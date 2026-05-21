@@ -29,7 +29,13 @@ type GetRestrictionsQuery = {
   sortOrder?: 'asc' | 'desc';
 };
 
-type LocationStatusSource = 'geo_header' | 'ip_lookup' | 'checkout_state' | 'test_override' | 'unknown';
+type LocationStatusSource =
+  | 'geo_header'
+  | 'ip_lookup'
+  | 'checkout_state'
+  | 'zip_lookup'
+  | 'test_override'
+  | 'unknown';
 
 type EvaluateRestrictionParams = {
   stateCode?: string | null;
@@ -41,6 +47,7 @@ type EvaluateRestrictionParams = {
 type GetLocationStatusParams = {
   req: Request;
   checkoutState?: string | null;
+  zipCode?: string | null;
   testId?: string | null;
   laboratoryId?: string | null;
   publicIp?: string | null;
@@ -86,6 +93,23 @@ type GeoLookupResult = {
   regionName: string | null;
   city: string | null;
   source: GeoLookupSource;
+};
+
+type ZipLookupResult = {
+  zipCode: string;
+  stateCode: string;
+  stateName: string | null;
+  city: string | null;
+};
+
+type ZippopotamResponse = {
+  country?: string;
+  'country abbreviation'?: string;
+  places?: Array<{
+    'place name'?: string;
+    state?: string;
+    'state abbreviation'?: string;
+  }>;
 };
 
 export type RestrictionDecision = {
@@ -394,6 +418,85 @@ class StateRestrictionService {
 
   private getGeoCacheKey(ip: string) {
     return `geoip:${ip}`;
+  }
+
+  private getZipCacheKey(zipCode: string) {
+    return `zip:${zipCode}`;
+  }
+
+  private normalizeZipCode(value: string | null | undefined) {
+    const normalized = value?.trim();
+    return normalized && /^\d{5}$/.test(normalized) ? normalized : null;
+  }
+
+  private async readZipCache(zipCode: string): Promise<ZipLookupResult | null> {
+    try {
+      const cached = await redisClient.get(this.getZipCacheKey(zipCode));
+      return cached ? (JSON.parse(cached) as ZipLookupResult) : null;
+    } catch (error) {
+      logger.warn(
+        JSON.stringify({
+          event: 'zip_cache_read_failed',
+          zipCode,
+          error: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
+      return null;
+    }
+  }
+
+  private async writeZipCache(result: ZipLookupResult) {
+    try {
+      await redisClient.set(this.getZipCacheKey(result.zipCode), JSON.stringify(result), 'EX', 86400);
+    } catch (error) {
+      logger.warn(
+        JSON.stringify({
+          event: 'zip_cache_write_failed',
+          zipCode: result.zipCode,
+          error: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
+    }
+  }
+
+  private async lookupStateFromZip(zipCode: string): Promise<ZipLookupResult> {
+    const cached = await this.readZipCache(zipCode);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const response = await axios.get<ZippopotamResponse>(
+        `https://api.zippopotam.us/us/${encodeURIComponent(zipCode)}`,
+        { timeout: 5000 },
+      );
+      const place = response.data.places?.[0];
+      const stateCode = this.sanitizeStateCode(place?.['state abbreviation']);
+
+      if (!stateCode) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'ZIP code must be a valid U.S. ZIP code');
+      }
+
+      const result: ZipLookupResult = {
+        zipCode,
+        stateCode,
+        stateName: place?.state || US_STATE_NAMES[stateCode] || null,
+        city: place?.['place name'] || null,
+      };
+
+      await this.writeZipCache(result);
+      return result;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'ZIP code must be a valid U.S. ZIP code');
+      }
+
+      throw new ApiError(httpStatus.SERVICE_UNAVAILABLE, 'Unable to verify ZIP code right now');
+    }
   }
 
   private async readGeoCache(ip: string): Promise<GeoLookupResult | null> {
@@ -774,9 +877,13 @@ class StateRestrictionService {
     const detectedFromIp = geo?.countryCode === 'US' ? this.sanitizeStateCode(geo.regionCode) : null;
     const detectedStateCode = overrideState || detectedFromHeaders || detectedFromIp;
     const checkoutState = this.sanitizeStateCode(params.checkoutState);
-    const effectiveStateCode = checkoutState || detectedStateCode || null;
+    const zipCode = this.normalizeZipCode(params.zipCode);
+    const zipLookup = zipCode ? await this.lookupStateFromZip(zipCode) : null;
+    const effectiveStateCode = checkoutState || zipLookup?.stateCode || detectedStateCode || null;
     const source: LocationStatusSource = checkoutState
       ? 'checkout_state'
+      : zipLookup
+        ? 'zip_lookup'
       : overrideState
         ? 'test_override'
         : detectedFromHeaders
@@ -798,12 +905,14 @@ class StateRestrictionService {
     return {
       ip,
       maskedIp,
-      countryCode: overrideState || detectedFromHeaders ? 'US' : geo?.countryCode || null,
-      regionCode: detectedStateCode || geo?.regionCode || null,
-      regionName: detectedStateCode
+      countryCode: zipLookup || overrideState || detectedFromHeaders ? 'US' : geo?.countryCode || null,
+      regionCode: zipLookup?.stateCode || detectedStateCode || geo?.regionCode || null,
+      regionName: zipLookup?.stateName
+        ? zipLookup.stateName
+        : detectedStateCode
         ? US_STATE_NAMES[detectedStateCode] || geo?.regionName || null
         : geo?.regionName || null,
-      city: geo?.city || null,
+      city: zipLookup?.city || geo?.city || null,
       detectedStateCode: detectedStateCode || null,
       effectiveStateCode,
       laboratoryRoute: effectiveLaboratory.laboratoryRoute,

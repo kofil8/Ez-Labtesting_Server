@@ -11,6 +11,7 @@ class StateRestrictionController {
       const result = await stateRestrictionService.getLocationStatus({
         req,
         checkoutState: req.query.checkoutState as string | undefined,
+        zipCode: req.query.zipCode as string | undefined,
         testId: req.query.testId as string | undefined,
         laboratoryId: req.query.laboratoryId as string | undefined,
         publicIp: req.query.publicIp as string | undefined,

@@ -211,6 +211,54 @@ describe('stateRestrictionService location status', () => {
     });
   });
 
+  it('resolves ZIP code through the postal lookup before evaluating restrictions', async () => {
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        places: [
+          {
+            'place name': 'New York',
+            state: 'New York',
+            'state abbreviation': 'NY',
+          },
+        ],
+      },
+    });
+    mockedPrisma.stateRestriction.findFirst.mockResolvedValueOnce({
+      restrictionType: 'BLOCKED',
+      laboratory: null,
+    });
+
+    const result = await stateRestrictionService.getLocationStatus({
+      req: {
+        headers: {},
+        ip: '127.0.0.1',
+      } as any,
+      zipCode: '10001',
+    });
+
+    expect(mockedAxios.get).toHaveBeenCalledWith('https://api.zippopotam.us/us/10001', {
+      timeout: 5000,
+    });
+    expect(mockedPrisma.stateRestriction.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stateCode: 'NY',
+          laboratoryId: 'lab-access',
+          testId: null,
+          isActive: true,
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      city: 'New York',
+      effectiveStateCode: 'NY',
+      regionName: 'New York',
+      source: 'zip_lookup',
+      canOrder: false,
+      restrictionType: 'BLOCKED',
+    });
+  });
+
   it('returns a safe allowed response when no trustworthy public ip is available', async () => {
     const result = await stateRestrictionService.getLocationStatus({
       req: {

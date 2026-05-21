@@ -12,7 +12,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/ABO+Group+%26+RH+Type.webp",
     "testCode": "00029"
   },
   {
@@ -28,7 +28,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/AFP+(Tumor+Marker).webp",
     "testCode": "00141"
   },
   {
@@ -44,7 +44,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Albumin.jpg",
     "testCode": "00112"
   },
   {
@@ -60,7 +60,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Alkaline+Phosphatase.webp",
     "testCode": "00115"
   },
   {
@@ -76,7 +76,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/ALT.avif",
     "testCode": "00116"
   },
   {
@@ -92,7 +92,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Amenorrhea+Panel.avif",
     "testCode": "00016"
   },
   {
@@ -108,7 +108,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Amylase.webp",
     "testCode": "00121"
   },
   {
@@ -124,7 +124,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Amylase%2C+24+Hour+Urine.webp",
     "testCode": "24A"
   },
   {
@@ -153,7 +153,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/ANA+Screen+%2B+11+ANA+Components.jpg",
     "testCode": "ANA+"
   },
   {
@@ -169,7 +169,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/ANA+Screen+w-Reflex+to+Components.webp",
     "testCode": "ANAX"
   },
   {
@@ -304,11 +304,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "82172 (x2), 83695",
     "isPanel": true,
-    "componentSlugs": [
-      "apolipoprotein-a-1-apo-a",
-      "apolipoprotein-b-apo-b",
-      "lipoprotein-a"
-    ],
+    "componentSlugs": ["apolipoprotein-a-1-apo-a", "apolipoprotein-b-apo-b", "lipoprotein-a"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
@@ -660,11 +656,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "86304, 86300, 86301",
     "isPanel": true,
-    "componentSlugs": [
-      "ca-15-3",
-      "ca-19-9",
-      "ca-125"
-    ],
+    "componentSlugs": ["ca-15-3", "ca-19-9", "ca-125"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
@@ -913,10 +905,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "87491",
     "isPanel": true,
-    "componentSlugs": [
-      "chlamydia-urine",
-      "neisseria-gonorrhea-urine"
-    ],
+    "componentSlugs": ["chlamydia-urine", "neisseria-gonorrhea-urine"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
@@ -1653,12 +1642,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "80051",
     "isPanel": true,
-    "componentSlugs": [
-      "sodium",
-      "potassium-serum",
-      "chloride",
-      "carbon-dioxide-co2"
-    ],
+    "componentSlugs": ["sodium", "potassium-serum", "chloride", "carbon-dioxide-co2"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
@@ -1809,11 +1793,7 @@
     "baseTurnaroundDays": 3,
     "cptCode": null,
     "isPanel": true,
-    "componentSlugs": [
-      "estrone-e1-lc-ms-ms",
-      "estradiol-e2-lc-ms-ms",
-      "estriol-e3-lc-ms-ms"
-    ],
+    "componentSlugs": ["estrone-e1-lc-ms-ms", "estradiol-e2-lc-ms-ms", "estriol-e3-lc-ms-ms"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
@@ -1974,10 +1954,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "83001, 83002",
     "isPanel": true,
-    "componentSlugs": [
-      "fsh",
-      "lh"
-    ],
+    "componentSlugs": ["fsh", "lh"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
@@ -2505,10 +2482,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "86695, 86696",
     "isPanel": true,
-    "componentSlugs": [
-      "herpes-i-igg",
-      "herpes-ii-igg"
-    ],
+    "componentSlugs": ["herpes-i-igg", "herpes-ii-igg"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
@@ -3144,11 +3118,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "86735, 86762, 86765, 86787",
     "isPanel": true,
-    "componentSlugs": [
-      "measles-rubeola-igg",
-      "mumps-abs-igg",
-      "rubella-qual-ab-igg"
-    ],
+    "componentSlugs": ["measles-rubeola-igg", "mumps-abs-igg", "rubella-qual-ab-igg"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
@@ -4640,11 +4610,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "84443, 84439, 84481",
     "isPanel": true,
-    "componentSlugs": [
-      "t3-free",
-      "t4-free",
-      "tsh"
-    ],
+    "componentSlugs": ["t3-free", "t4-free", "tsh"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
@@ -4909,10 +4875,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "81001",
     "isPanel": true,
-    "componentSlugs": [
-      "urinalysis-no-reflex",
-      "urine-culture-void"
-    ],
+    "componentSlugs": ["urinalysis-no-reflex", "urine-culture-void"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
@@ -4977,10 +4940,7 @@
     "baseTurnaroundDays": 1,
     "cptCode": "82607, 82746",
     "isPanel": true,
-    "componentSlugs": [
-      "vitamin-b12",
-      "folate"
-    ],
+    "componentSlugs": ["vitamin-b12", "folate"],
     "isActive": true,
     "isPopular": false,
     "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",

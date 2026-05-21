@@ -24,6 +24,11 @@ export const getRestrictionsSchema = z.object({
 export const getLocationStatusSchema = z.object({
   query: z.object({
     checkoutState: stateCodeSchema.optional(),
+    zipCode: z
+      .string()
+      .trim()
+      .regex(/^\d{5}$/, 'ZIP code must be 5 digits')
+      .optional(),
     testId: z.string().uuid('Invalid test ID').optional(),
     laboratoryId: z.string().uuid('Invalid laboratory ID').optional(),
     publicIp: z
