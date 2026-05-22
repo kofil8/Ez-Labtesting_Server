@@ -185,7 +185,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/11+ANA+Components+(no+ANA+Screen).jpg",
     "testCode": "ANA-"
   },
   {
@@ -201,7 +201,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Androstenedione.avif",
     "testCode": "00327"
   },
   {
@@ -217,7 +217,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Androstenedione+LC-MS-MS.jpg",
     "testCode": "00329"
   },
   {
@@ -242,7 +242,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Anemia+Panel.jpeg",
     "testCode": "00014"
   },
   {
@@ -258,7 +258,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Antibody+Screen.jpg",
     "testCode": "00030"
   },
   {
@@ -274,7 +274,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Apolipoprotein+A-1+(Apo-A).jpg",
     "testCode": "00175"
   },
   {
@@ -290,7 +290,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Apolipoprotein+B+(Apo-B).webp",
     "testCode": "00176"
   },
   {
@@ -307,7 +307,7 @@
     "componentSlugs": ["apolipoprotein-a-1-apo-a", "apolipoprotein-b-apo-b", "lipoprotein-a"],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Apolipoprotein+Evaluation+(Apo-A-1%2C+Apo-B%2C+Lpa).png",
     "testCode": "S301"
   },
   {
@@ -323,7 +323,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Apo+E+Genotype.webp",
     "testCode": "L489"
   },
   {
@@ -344,7 +344,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Arthritis+Panel.webp",
     "testCode": "00015"
   },
   {
@@ -360,7 +360,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/AST.jpg",
     "testCode": "00117"
   },
   {
@@ -376,7 +376,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/AutoImmune+Analyzer.png",
     "testCode": "ANAZ"
   },
   {
@@ -392,7 +392,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Babesia+microti+(IgG%2C+IgM).jpg",
     "testCode": "S335"
   },
   {
@@ -418,7 +418,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Basic+Metabolic+Panel.webp",
     "testCode": "00003"
   },
   {
@@ -434,7 +434,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Bilirubin%2C+Direct.avif",
     "testCode": "00114"
   },
   {
@@ -450,7 +450,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Bilirubin%2C+Indirect.jpeg",
     "testCode": "IBIL"
   },
   {
@@ -466,7 +466,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Bilirubin%2C+Total.webp",
     "testCode": "00113"
   },
   {
@@ -482,7 +482,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/BNP.jpg",
     "testCode": "171B"
   },
   {
@@ -498,7 +498,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/BUN.jpg",
     "testCode": "00101"
   },
   {
@@ -514,7 +514,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/C-Peptide.jpg",
     "testCode": "CPEP"
   },
   {
@@ -530,7 +530,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/C.Difficile+Toxin+A%26B.webp",
     "testCode": "00247"
   },
   {
@@ -546,7 +546,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CA+125.jpeg",
     "testCode": "00143"
   },
   {
@@ -562,7 +562,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CA+15-3.jpg",
     "testCode": "00144"
   },
   {
@@ -578,7 +578,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CA+19-9.jpg",
     "testCode": "00181"
   },
   {
@@ -594,7 +594,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CA+27-29.avif",
     "testCode": "L452"
   },
   {
@@ -610,7 +610,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Calcium%2C+Serum.avif",
     "testCode": "00108"
   },
   {
@@ -626,7 +626,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Calcium%2C+24+Hour+Urine.jpg",
     "testCode": "4UCA"
   },
   {
@@ -642,7 +642,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Calcium%2C+Random+Urine.jpg",
     "testCode": "RUCA"
   },
   {
@@ -659,7 +659,7 @@
     "componentSlugs": ["ca-15-3", "ca-19-9", "ca-125"],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cancer+Panel%2C+Female+(CA+15-3%2C+CA+19-9%2C+CA+125).webp",
     "testCode": "3000"
   },
   {
@@ -683,7 +683,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cancer+Panel%2C+Female+Extended+(AFP%2C+B-HCG+Qual.%2C+CEA%2C+CA+15-3%2C+CA+19-9%2C+CA+125).png",
     "testCode": "3001"
   },
   {
@@ -699,7 +699,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cancer+Panel%2C+Male+(PSA+Free+%26+Total%2C+CA+19-9).jpg",
     "testCode": "3002"
   },
   {
@@ -715,7 +715,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cancer+Panel%2C+Male+Extended+(PSA%2C+Free+%26+Total%2C+CEA%2C+CA+19-9%2C+AFP%2C+HCG).jpg",
     "testCode": "3003"
   },
   {
@@ -731,7 +731,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Carbon+Dioxide+(CO2).avif",
     "testCode": "00107"
   },
   {
@@ -747,7 +747,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CardioPro+Advanced.webp",
     "testCode": "CP2"
   },
   {
@@ -763,7 +763,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CardioPro+Basic.jpg",
     "testCode": "CP1"
   },
   {
@@ -779,7 +779,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CardioPro+Early+Detection.jpg",
     "testCode": "ED1"
   },
   {
@@ -795,7 +795,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Catecholamines%2C+Fractionated.png",
     "testCode": "S508"
   },
   {
@@ -811,7 +811,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CBC.webp",
     "testCode": "00011"
   },
   {
@@ -827,7 +827,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CBC+w-Diff.jpg",
     "testCode": "00001"
   },
   {
@@ -843,7 +843,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CEA.jpg",
     "testCode": "00142"
   },
   {
@@ -859,12 +859,12 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Celiac+Disease+Evaluation+(TTG-A%2C+DGP-A%2C+TTG-G%2C+DGP-G).webp",
     "testCode": "CLIA"
   },
   {
     "id": 53,
-    "name": "Centromere Abs",
+    "name": "Celiac Disease Evaluation (TTG-A, DGP-A, TTG-G, DGP-G)",
     "slug": "centromere-abs",
     "description": "Associated with limited scleroderma and CREST syndrome",
     "shortDescription": "Autoimmune marker",
@@ -875,7 +875,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Celiac+Disease+Evaluation+(TTG-A%2C+DGP-A%2C+TTG-G%2C+DGP-G).webp",
     "testCode": "CENT"
   },
   {
@@ -891,7 +891,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Chlamydia%2C+Urine.webp",
     "testCode": "S603"
   },
   {
@@ -908,7 +908,7 @@
     "componentSlugs": ["chlamydia-urine", "neisseria-gonorrhea-urine"],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Chlamydia-Gonorrhea%2C+Urine.jpg",
     "testCode": "S595"
   },
   {
@@ -924,7 +924,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Chloride.webp",
     "testCode": "00106"
   },
   {
@@ -940,7 +940,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Chloride%2C+24+Hour+Urine.jpg",
     "testCode": "4UCL"
   },
   {
@@ -956,7 +956,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cholesterol%2C+Total.png",
     "testCode": "00124"
   },
   {
@@ -972,7 +972,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Chromatin.jpg",
     "testCode": "CHRM"
   },
   {
@@ -988,7 +988,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CK%2C+Total.jpg",
     "testCode": "00120"
   },
   {
@@ -1004,7 +1004,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cytomegalovirus+Ab.%2C+IgG.webp",
     "testCode": "00379"
   },
   {
@@ -1020,7 +1020,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Complement+C3.jpg",
     "testCode": "C3"
   },
   {
@@ -1036,7 +1036,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Complement+C4.jpg",
     "testCode": "C4"
   },
   {
@@ -1068,7 +1068,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Comprehensive+Metabolic+Panel.jpg",
     "testCode": "00004"
   },
   {
@@ -1084,7 +1084,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cortisol.webp",
     "testCode": "00162"
   },
   {
@@ -1100,7 +1100,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Copper.avif",
     "testCode": "LCU"
   },
   {
@@ -1116,7 +1116,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Copper%2C+Packed+RBC.avif",
     "testCode": "MR52"
   },
   {
@@ -1132,7 +1132,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CoQ10+LC-MS-MS.webp",
     "testCode": "Q10"
   },
   {
@@ -1148,7 +1148,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Creatinine.webp",
     "testCode": "00102"
   },
   {
@@ -1164,7 +1164,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CRP.webp",
     "testCode": "00234"
   },
   {
