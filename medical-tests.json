@@ -1661,7 +1661,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Epstein+Barr+Early+Ag%2C+IgG.avif",
     "testCode": "00354"
   },
   {
@@ -1683,7 +1683,7 @@
     ],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Epstein+Barr+Evaluation+(EBVCG%2C+EBNAG%2C+EDEAG%2C+EBVCM).jpg",
     "testCode": "EPS"
   },
   {
@@ -1699,7 +1699,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Epstein+Barr+Nuclear+Ag+%2CIgG.webp",
     "testCode": "00355"
   },
   {
@@ -1715,7 +1715,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Epstein+Barr+Viral+Capsid+Ag+%2CIgG.png",
     "testCode": "00352"
   },
   {
@@ -1731,7 +1731,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Epstein+Barr+Viral+Capsid+Ag+%2CIgM.jpg",
     "testCode": "00353"
   },
   {
@@ -1747,7 +1747,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Estradiol+(E2).webp",
     "testCode": "00159"
   },
   {
@@ -1763,7 +1763,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Estradiol+(E2)+LC-MS-MS.jpg",
     "testCode": "00359"
   },
   {
@@ -1779,7 +1779,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Estriol+(E3)+LC-MS-MS.png",
     "testCode": "00323"
   },
   {
@@ -1796,7 +1796,7 @@
     "componentSlugs": ["estrone-e1-lc-ms-ms", "estradiol-e2-lc-ms-ms", "estriol-e3-lc-ms-ms"],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Estrogens%2C+Total+LC-MS-MS.webp",
     "testCode": "00324"
   },
   {
@@ -1812,7 +1812,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Estrone+(E1)+LC-MS-MS.jpg",
     "testCode": "00322"
   },
   {
@@ -1828,7 +1828,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Fecal+Fat+Stain%2C+Qualitative.avif",
     "testCode": "00270"
   },
   {
@@ -1844,7 +1844,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Fecal+Leukocytes+Stain.jpg",
     "testCode": "00272"
   },
   {
@@ -1860,7 +1860,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Ferritin.jpg",
     "testCode": "00131"
   },
   {
@@ -1876,7 +1876,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Fibrinogen.jpg",
     "testCode": "00284"
   },
   {
@@ -1892,7 +1892,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Folate.webp",
     "testCode": "00133"
   },
   {
@@ -1908,7 +1908,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Free+Thyroxine+Index.webp",
     "testCode": "FTI"
   },
   {
@@ -1924,7 +1924,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Fructosamine.png",
     "testCode": "T003"
   },
   {
@@ -1940,7 +1940,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/FSH.jpg",
     "testCode": "00155"
   },
   {
@@ -1957,7 +1957,7 @@
     "componentSlugs": ["fsh", "lh"],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/FSH+%26+LH.webp",
     "testCode": "5239"
   },
   {
@@ -1973,7 +1973,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Fungal+Direct+Exam(KOH).jpg",
     "testCode": "00300"
   },
   {
