@@ -1180,7 +1180,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/CRP%2C+HS.jpg",
     "testCode": "00127"
   },
   {
@@ -1196,7 +1196,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cryptosporidium%2C+Stool.jpg",
     "testCode": "00255"
   },
   {
@@ -1212,7 +1212,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Anaerobic.jpg",
     "testCode": "00310"
   },
   {
@@ -1228,7 +1228,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Blood.webp",
     "testCode": "00299"
   },
   {
@@ -1244,7 +1244,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Fungus.jpg",
     "testCode": "00298"
   },
   {
@@ -1260,7 +1260,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+General.jpg",
     "testCode": "00308"
   },
   {
@@ -1276,7 +1276,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Genital.jpg",
     "testCode": "00287"
   },
   {
@@ -1292,7 +1292,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Gp.+B+Strep.png",
     "testCode": "00295"
   },
   {
@@ -1308,7 +1308,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Gp.+A+Strep.avif",
     "testCode": "00294"
   },
   {
@@ -1324,7 +1324,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Sputum-Lower+Respiratory.webp",
     "testCode": "00290"
   },
   {
@@ -1340,7 +1340,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Throat.webp",
     "testCode": "00293"
   },
   {
@@ -1356,7 +1356,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Urine%2C+Catheterized.webp",
     "testCode": "C296"
   },
   {
@@ -1372,7 +1372,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Wound%2C+Deep.jpg",
     "testCode": "D297"
   },
   {
@@ -1388,7 +1388,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Wound%2C+Superficial.jpg",
     "testCode": "S297"
   },
   {
@@ -1404,7 +1404,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Camp.-Salm.-Shig.jpeg",
     "testCode": "00302"
   },
   {
@@ -1420,7 +1420,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Campylobacter.jpg",
     "testCode": "00303"
   },
   {
@@ -1436,7 +1436,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Culture%2C+Salmonella-Shig..jpg",
     "testCode": "00304"
   },
   {
@@ -1452,7 +1452,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cyclic+Citrullinated+Peptide+IgG+Ab..jpg",
     "testCode": "00388"
   },
   {
@@ -1468,7 +1468,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cyclospora%2C+Stool.avif",
     "testCode": "00260"
   },
   {
@@ -1484,7 +1484,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Cytomegalovirus%2C+IgM.webp",
     "testCode": "S782"
   },
   {
@@ -1500,7 +1500,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Deamidated+Gliadin+Peptide+IgA.jpg",
     "testCode": "00396"
   },
   {
@@ -1516,7 +1516,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Deamidated+Gliadin+Peptide+IgA.jpg",
     "testCode": "00398"
   },
   {
@@ -1532,7 +1532,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684453401-8c149d533b37?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/DHEA-Sulfate.avif",
     "testCode": "00161"
   },
   {
@@ -1548,7 +1548,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/DHT+(Dihydrotestosterone)+LC-MS-MS.webp",
     "testCode": "00321"
   },
   {
@@ -1564,7 +1564,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Diarrhea+Panel.avif",
     "testCode": "00259"
   },
   {
@@ -1580,7 +1580,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1583324113626-70df0f4eaf42?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/DNA+Ab.%2C+d-s.webp",
     "testCode": "DNA"
   },
   {
@@ -1596,7 +1596,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581056771107-24ca5f033842?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Drugs+of+Abuse+Screen%2C+Urine.jpg",
     "testCode": "00027"
   },
   {
@@ -1612,7 +1612,7 @@
     "isPanel": false,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/E.+Coli+Shiga+Toxins.jpg",
     "testCode": "00246"
   },
   {
@@ -1628,7 +1628,7 @@
     "isPanel": true,
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Ehrlichia+chaffeensis+Abs+(IgG%2C+IgM).jpg",
     "testCode": "D172"
   },
   {
@@ -1645,7 +1645,7 @@
     "componentSlugs": ["sodium", "potassium-serum", "chloride", "carbon-dioxide-co2"],
     "isActive": true,
     "isPopular": false,
-    "testImageUrl": "https://images.unsplash.com/photo-1581594693702-fbdc51b2763b?w=800&q=80",
+    "testImageUrl": "https://ez-labtesting-bucket.s3.us-west-1.amazonaws.com/uploads/test/Electrolyte+Panel.png",
     "testCode": "00005"
   },
   {
