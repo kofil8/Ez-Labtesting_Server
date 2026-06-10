@@ -1,4 +1,5 @@
 import { Gender } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import httpStatus from 'http-status';
 import config from '../../../config';
@@ -20,6 +21,7 @@ const GENDER_ENUM_VALUES = new Set<Gender>(Object.values(GENDER_ALIASES));
 const PROFILE_UPDATE_FIELDS = [
   'firstName',
   'lastName',
+  'username',
   'phoneNumber',
   'bio',
   'gender',
@@ -140,6 +142,14 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
     normalizedPayload.gender = normalizedGender;
   }
 
+  if (Object.prototype.hasOwnProperty.call(normalizedPayload, 'username')) {
+    const rawUsername = normalizedPayload.username;
+    if (typeof rawUsername === 'string') {
+      const trimmedUsername = rawUsername.trim();
+      normalizedPayload.username = trimmedUsername.length > 0 ? trimmedUsername : null;
+    }
+  }
+
   const updateData = PROFILE_UPDATE_FIELDS.reduce<Record<string, unknown>>((acc, field) => {
     if (Object.prototype.hasOwnProperty.call(normalizedPayload, field)) {
       acc[field] = normalizedPayload[field];
@@ -147,13 +157,26 @@ const updateMyProfileIntoDB = async (id: string, payload: any, file: any) => {
     return acc;
   }, {});
 
-  const updatedUser = await prisma.user.update({
-    where: { id },
-    data: {
-      profileImage,
-      ...updateData,
-    },
-  });
+  let updatedUser;
+  try {
+    updatedUser = await prisma.user.update({
+      where: { id },
+      data: {
+        profileImage,
+        ...updateData,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      Array.isArray((error.meta as any)?.target) &&
+      ((error.meta as any).target as string[]).includes('username')
+    ) {
+      throw new ApiError(httpStatus.CONFLICT, 'This username is already taken');
+    }
+    throw error;
+  }
 
   const { password, ...rest } = updatedUser;
   return Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== null));

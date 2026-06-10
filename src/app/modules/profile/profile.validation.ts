@@ -4,6 +4,7 @@ import { z } from 'zod';
 const updateProfileBodyData = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
+  username: z.string().optional(),
   phoneNumber: z.string().optional(),
   bio: z.string().optional(),
   gender: z.nativeEnum(Gender).optional(),
